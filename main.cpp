@@ -24,7 +24,7 @@ private:
     static constexpr int m_titleBarHeight { 30 };
     static constexpr int m_titleBtnWidth { 50 };
     static constexpr int m_fontSize { 16 };
-    Font m_font { LoadFontEx("res/JetBrainsMono-Bold.ttf", m_fontSize, 0, 0) };  // LoadFontEx() must be called after InitWindow()
+    Font m_font { LoadFontEx("./assets/JetBrainsMono-Bold.ttf", m_fontSize, 0, 0) };  // LoadFontEx() must be called after InitWindow()
     const Color m_windowColor { 36, 40, 59, 255 };
     const Color m_hoverColor { 62, 64, 80, 255 };
     int m_closeBtnStartPosX;
@@ -70,10 +70,10 @@ public:
         m_minBtnStartPosX = m_maxBtnStartPosX - m_titleBtnWidth;
         m_currImageTexture = LoadTextureFromImage(m_currImage);
 
-        m_icons.at(CLOSE) = LoadTexture("./res/close.png");
-        m_icons.at(MAXIMIZE) = LoadTexture("./res/maximize.png");
-        m_icons.at(MINIMIZE) = LoadTexture("./res/minimize.png");
-        m_icons.at(RESTORE) = LoadTexture("./res/restore.png"); 
+        m_icons.at(CLOSE) = LoadTexture("./assets/close.png");
+        m_icons.at(MAXIMIZE) = LoadTexture("./assets/maximize.png");
+        m_icons.at(MINIMIZE) = LoadTexture("./assets/minimize.png");
+        m_icons.at(RESTORE) = LoadTexture("./assets/restore.png"); 
 
         m_btnRec.at(CLOSE) = Rectangle { static_cast<float>(m_closeBtnStartPosX), 0.0f, static_cast<float>(m_titleBtnWidth), static_cast<float>(m_titleBarHeight) };
         m_btnRec.at(MAXIMIZE) = Rectangle { static_cast<float>(m_maxBtnStartPosX), 0.0f, static_cast<float>(m_titleBtnWidth), static_cast<float>(m_titleBarHeight) };
@@ -331,7 +331,7 @@ public:
     void drawImage() {
         if (m_isMaximized) {DrawTextureEx(m_currImageTexture, m_imgCurrPos, 0, m_imgScale, WHITE); }
         else { DrawTextureEx(m_currImageTexture, m_imgMinimizePos, 0, m_imgScale, WHITE); }
-        DrawRectangleRec(m_imgRec, RED);
+        // DrawRectangleRec(m_imgRec, RED);
         // DrawRectangleRec(m_titleBarRec, YELLOW);
         // std::cout << m_imgCurrPos.x << " " << m_imgCurrPos.y << " \n";
     }
