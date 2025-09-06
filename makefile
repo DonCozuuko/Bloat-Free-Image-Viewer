@@ -1,18 +1,22 @@
 main:
-	g++ main.cpp cursor-pos.cpp -o \
+	g++ main.cpp cursor-utils.cpp -o \
 		image-loader -Iinclude -Llib -lraylib -lopengl32 -lgdi32 -lwinmm\
 		&& ./image-loader
 
 gui:
-	g++ main.cpp cursor-pos.cpp -o \
+	g++ main.cpp cursor-utils.cpp -o \
 		image-loader -Iinclude -Llib -lraylib -lopengl32 -lgdi32 -lwinmm -mwindows\
-		&& ./image-loader
 
-x:
-	g++ main.cpp cursor-pos.cpp -o \
-		image-loader -Iinclude -Llib -lraylib -lopengl32 -lgdi32 -lwinmm\
+# x:
+# 	g++ main.cpp cursor-pos.cpp -o \
+# 		image-loader -Iinclude -Llib -lraylib -lopengl32 -lgdi32 -lwinmm\
 
 s:
-	g++ main.cpp cursor-pos.cpp -o \
+	g++ main.cpp cursor-utils.cpp -o \
 		image-loader -Iinclude -Llib -lraylib -lopengl32 -lgdi32 -lwinmm\
-		&& ./image-loader speed.png
+		&& ./image-loader ./assets/test-imgs/speed.png
+
+m:
+	g++ main.cpp cursor-utils.cpp -o \
+		image-loader -Iinclude -Llib -lraylib -lopengl32 -lgdi32 -lwinmm\
+		&& ./image-loader ./assets/test-imgs/markiplier-chins.jpg

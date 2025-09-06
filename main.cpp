@@ -4,7 +4,7 @@
 #include <string>
 #include "raylib.h"
 
-#include "cursor-pos.hpp"
+#include "cursor-utils.hpp"
 
 // windows photo viewer has three resizing modes:
 // - has a minimum width and height + padding based on the images dimensions
@@ -12,87 +12,6 @@
 // - full screen mode + resizable
 
 enum Png { CLOSE, MAXIMIZE, MINIMIZE, RESTORE };
-
-namespace val {
-    // Misc globals that are important to the function of the window
-    // To be overrided during display loop, so no const qualifer
-    bool closeWindow { false };
-    bool dragging { false };
-    bool clickTitleBar { false };
-    bool btnIsPressed { false };
-    Vector2 dragOffset {};
-    Vector2 winAbsPos {};
-    Vector2 dragNewPos {};
-    std::vector<int> cursorPosVec {};
-    // const std::vector<int> monDims { FetchMonDimensions() };
-}
-
-namespace win {
-    // Data for the window
-    // Main Window
-    // int width { 100 };
-    // int height { 100 };
-    // constexpr Color windowColor { 36, 40, 59, 255 };
-    constexpr const char* title { "Enjoy Your Images Bitch!" };
-    // Font font {};
-    // constexpr int fontSize { 16 };
-    // const int monWidth { val::monDims[0] };  // this is not safe, but idc
-    // const int monHeight { val::monDims[1] }; // this is not safe, but idc
-    // constexpr int NUM_ICONS { 4 };
-    // bool isMaximized { false };
-    // Title Bar
-    // constexpr int titleBarHeight { 30 };
-    // constexpr int titleBtnWidth { 50 };
-    // float exitBtnWidth {};  // cant be constexpr since width and height will be changed
-    // constexpr Color hoverColor { 62, 64, 80, 255 };
-    // int textLengthPixels {};
-    // Cursor Shit
-    int cursorX {};
-    int cursorY {};
-    // Image Shit
-    // Image currImage {};
-    // Texture2D currImageTexture {};
-    // char* fileName {};
-    // Member functions
-    // void LoadFileNameLengthPixels() {
-    //     const Vector2 length { MeasureTextEx(win::font, fileName, fontSize, 10) } ;
-    //     textLengthPixels = length.x;
-    //     std::cout << length.x << " " << length.y << " \n"; 
-    // }
-    // void LoadTitleBarFont() {
-    //     // font = LoadFontEx("res/segoeui.ttf", win::fontSize, 0, 0);
-    //     font = LoadFontEx("res/JetBrainsMono-Bold.ttf", fontSize, 0, 0);
-    // }
-    // void LoadDisplayedImageAsTexture() {
-    //     currImageTexture = LoadTextureFromImage(currImage);
-    // }
-    // void addPadding() {
-    //     win::width = currImage.width;
-    //     win::height = currImage.height + win::titleBarHeight; 
-    //     win::exitBtnWidth = static_cast<float>(win::width - win::titleBtnWidth);  // cant be constexpr since width and height will be changed
-    // }
-}
-
-// namespace arr {
-//     // To hold title bar shit
-//     std::array<Texture2D, win::NUM_ICONS> icons {};
-//     std::array<bool, win::NUM_ICONS> btnIsHovered { false, false, false, false };
-//     std::array<Rectangle, win::NUM_ICONS> btnRec {};
-
-//     void LoadTitleBarIconTextures() {
-//         icons.at(CLOSE) = LoadTexture("./res/close.png");
-//         icons.at(MAXIMIZE) = LoadTexture("./res/maximize.png");
-//         icons.at(MINIMIZE) = LoadTexture("./res/minimize.png");
-//         icons.at(RESTORE) = LoadTexture("./res/restore.png");  
-//     }
-
-//     void LoadTitleBarBtnRecs() {
-//         btnRec.at(CLOSE) = Rectangle { win::exitBtnWidth, 0, win::titleBtnWidth, win::titleBarHeight };
-//         btnRec.at(MAXIMIZE) = Rectangle { win::exitBtnWidth - win::titleBtnWidth, 0, win::titleBtnWidth, win::titleBarHeight };
-//         btnRec.at(MINIMIZE) = Rectangle { win::exitBtnWidth - (win::titleBtnWidth * 2), 0, win::titleBtnWidth, win::titleBarHeight };
-//         btnRec.at(RESTORE) = Rectangle { win::exitBtnWidth - win::titleBtnWidth, 0, win::titleBtnWidth, win::titleBarHeight };
-//     }
-// }
 
 constexpr int MAX_NUM_ICONS { 4 };
 
@@ -118,24 +37,26 @@ private:
     bool m_winIsClosed { false };
     bool m_titleBarIsClicked { false };
     bool m_winIsDragged { false };
-    bool m_imageIsClicked { false };
-    bool m_imageIsDragged { false };
+    bool m_imgIsClicked { false };
+    bool m_imgIsDragged { false };
 
     Image m_currImage;
     Texture2D m_currImageTexture;
     Rectangle m_imgRec;
+    Vector2 m_imgCurrPos;
+    Vector2 m_imgCenterPos;
+    Vector2 m_imgMinimizePos { 0.0f, m_titleBarHeight };
     double m_imgScale { 1.0 };
     char* m_fileName;
 
     float m_textStartPosX;  // this starting x pos will center the text on the titlebar (when not maximized)
     int m_titleBarLineWidth;
-    float m_imgCenterPosX;
-    float m_imgCenterPosY;
+    Rectangle m_titleBarRec;
 
     std::array<Texture2D, MAX_NUM_ICONS> m_icons;
     std::array<bool, MAX_NUM_ICONS> m_btnIsHovered { false, false, false, false };
     std::array<Rectangle, MAX_NUM_ICONS> m_btnRec;
-    
+
 public:
     Window(const Image& currImage, char* fileName)
         :  m_winWidth { currImage.width }, m_winHeight { currImage.height + m_titleBarHeight }, m_currImage { currImage }
@@ -162,42 +83,74 @@ public:
         const Vector2 length { MeasureTextEx(m_font, m_fileName, m_fontSize, 0) } ;
         m_fileNameLengthPixels = length.x;
 
-        m_textStartPosX = static_cast<float>((m_currImage.width / 2.0f) - (m_fileNameLengthPixels / 2.0f));
+        m_textStartPosX = static_cast<int>(static_cast<float>(m_currImage.width / 2.0) - static_cast<float>(m_fileNameLengthPixels / 2.0));
         m_titleBarLineWidth = m_currImage.width;
+        m_titleBarRec.x = 0;
+        m_titleBarRec.y = 0;
+        m_titleBarRec.width = m_minBtnStartPosX;
+        m_titleBarRec.height = m_titleBarHeight;
         // the range of the y pos is [m_titleBarHeight, m_monHeight - 40] inclusive
-        m_imgCenterPosX = static_cast<float>((m_monWidth / 2.0f) - (m_currImage.width / 2.0f));
-        m_imgCenterPosY = static_cast<float>((m_monHeight / 2.0f) - (m_currImage.height / 2.0f) - 10.0f);
-        // std::cout << m_monWidth << " " << m_monHeight << "\n";
+        m_imgCenterPos.x = static_cast<int>(static_cast<float>(m_monWidth / 2.0) - static_cast<float>(m_currImage.width / 2.0));
+        m_imgCenterPos.y = static_cast<int>(static_cast<float>(m_monHeight / 2.0) - static_cast<float>(m_currImage.height / 2.0) - 10.0);
+ 
+        m_imgCurrPos.x = 0;
+        m_imgCurrPos.y = m_titleBarHeight;
+
+        m_imgRec.x = m_imgCurrPos.x;
+        m_imgRec.y = m_imgCurrPos.y;
+        m_imgRec.width = m_currImage.width;
+        m_imgRec.height = m_currImage.height;
+        std::cout << m_imgRec.width << " " << m_imgRec.height << " \n";
     }
 
     void draggingLogic(const Vector2& mousePos, std::array<int, 2>& cursorPosVec, int& cursorX, int& cursorY,
                         Vector2& winAbsPos, Vector2& dragOffset, Vector2& dragNewPos) {
         if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-            if (!m_isMaximized) {
-                if (mousePos.y < m_titleBarHeight && mousePos.x < m_minBtnStartPosX) {
-                    m_titleBarIsClicked = true;
-                }
+            if (CheckCollisionPointRec(mousePos, m_titleBarRec)) {
+                std::cout << "I DONT GIVE A FUCKKKK\n";
+                m_titleBarIsClicked = true;
             }
-            else {
-                ;
+            else if (m_isMaximized && CheckCollisionPointRec(mousePos, m_imgRec)) {
+                std::cout << "JUST SHAKE THAT ASS BITCH\n";
+                m_imgIsClicked = true;
+                setGrabCloseCursor();
             }
         }
-        if (IsMouseButtonDown(MOUSE_LEFT_BUTTON) && m_titleBarIsClicked) {
-            cursorPosVec = FetchCursorPosition();
-            cursorX = cursorPosVec[0];
-            cursorY = cursorPosVec[1];
-            if (!m_winIsDragged) {
-                m_winIsDragged = true;
-                winAbsPos = GetWindowPosition();
-                dragOffset.x = cursorX - winAbsPos.x;
-                dragOffset.y = cursorY - winAbsPos.y;
+
+        if ((m_titleBarIsClicked || m_imgIsClicked) && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+            // Window dragging uses system cursor position, while image dragging uses
+            // raylib window cursor position
+            if (m_titleBarIsClicked) {
+                cursorPosVec = FetchCursorPosition();
+                cursorX = cursorPosVec[0];
+                cursorY = cursorPosVec[1];
+                if (!m_winIsDragged) {
+                    // draggOffset should only be initialized once per hold and release
+                    m_winIsDragged = true;
+                    winAbsPos = GetWindowPosition();
+                    dragOffset.x = cursorX - winAbsPos.x;
+                    dragOffset.y = cursorY - winAbsPos.y;
+                }
+                dragNewPos.x = cursorX - dragOffset.x;
+                dragNewPos.y = cursorY - dragOffset.y; 
             }
-            dragNewPos.x = cursorX - dragOffset.x;
-            dragNewPos.y = cursorY - dragOffset.y; 
+            else if (m_imgIsClicked) {
+                if (!m_imgIsDragged) {
+                    m_imgIsDragged = true;
+                    dragOffset.x = mousePos.x - m_imgCurrPos.x;
+                    dragOffset.y = mousePos.y - m_imgCurrPos.y;
+                }
+                m_imgCurrPos.x = mousePos.x - dragOffset.x;
+                m_imgCurrPos.y = mousePos.y - dragOffset.y;
+                m_imgRec.x = m_imgCurrPos.x;
+                m_imgRec.y = m_imgCurrPos.y;
+            }
         }
         if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
             m_winIsDragged = false;
             m_titleBarIsClicked = false;
+            m_imgIsDragged = false;
+            m_imgIsClicked = false;
         }
         if (m_winIsDragged) {
             // y collisions, 60 is roughly the height of the windows taskbar (in pixels)
@@ -222,7 +175,7 @@ public:
                 continue;
             }
 
-            if (CheckCollisionPointRec(mousePos, m_btnRec[i]) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !m_btnIsPressed) {
+            if (!m_btnIsPressed && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && CheckCollisionPointRec(mousePos, m_btnRec[i])) {
                 m_btnIsPressed = true;
                 switch(i) {
                     case CLOSE:
@@ -265,6 +218,15 @@ public:
 
         m_textStartPosX = (m_monWidth / 2.0f) - (m_fileNameLengthPixels / 2.0f);
         m_titleBarLineWidth = m_monWidth;
+        m_titleBarRec.x = 0;
+        m_titleBarRec.y = 0;
+        m_titleBarRec.width = m_btnRec[MINIMIZE].x;
+        m_titleBarRec.height = m_titleBarHeight;
+
+        m_imgCurrPos.x = m_imgCenterPos.x;
+        m_imgCurrPos.y = m_imgCenterPos.y;
+        m_imgRec.x = m_imgCurrPos.x;
+        m_imgRec.y = m_imgCurrPos.y;
     }
 
     void restoreWindowBitch() {
@@ -277,6 +239,15 @@ public:
         
         m_textStartPosX = (m_currImage.width / 2.0f) - (m_fileNameLengthPixels / 2.0f);
         m_titleBarLineWidth = m_currImage.width;
+        m_titleBarRec.x = 0;
+        m_titleBarRec.y = 0;
+        m_titleBarRec.width = m_minBtnStartPosX;
+        m_titleBarRec.height = m_titleBarHeight;
+
+        m_imgCurrPos.x = 0;
+        m_imgCurrPos.y = m_titleBarHeight;
+        m_imgRec.x = m_imgCurrPos.x;
+        m_imgRec.y = m_imgCurrPos.y;
     }
 
     void drawTitleBarBtns() {
@@ -308,7 +279,7 @@ public:
         DrawLine(m_textStartPosX, m_titleBarHeight, m_textStartPosX + m_fileNameLengthPixels, m_titleBarHeight, RED);
     }
 
-    void zoomingInNOutLogic() {
+    void zoomingInNOutLogic(int& currScroll, int& prevScroll) {
         if (m_isMaximized) {
             // std::cout << "You son of a bitch, im in!\n";
             if (IsKeyDown(KEY_LEFT_CONTROL)) {
@@ -325,13 +296,49 @@ public:
                     m_imgScale -= 0.05;
                 }
             }
-            
+        }
+        currScroll = static_cast<int>(GetMouseWheelMove());
+        if (currScroll != 0) {
+            m_imgScale += (0.05 * currScroll);
+            if (m_imgScale == 1.0) {
+                m_imgRec.width = m_currImage.width;
+                m_imgRec.height = m_currImage.height;
+            }
+            else {
+                const int newImgWidth { static_cast<int>(m_currImage.width * m_imgScale) };
+                const int newImgHeight { static_cast<int>(m_currImage.height * m_imgScale) };
+                m_imgCurrPos.x = static_cast<int>(m_imgRec.x - ((newImgWidth - m_imgRec.width) / 2.0));
+                m_imgCurrPos.y = static_cast<int>(m_imgRec.y - ((newImgHeight - m_imgRec.height) / 2.0));;
+                m_imgRec.x = m_imgCurrPos.x;
+                m_imgRec.y = m_imgCurrPos.y;
+                m_imgRec.width = newImgWidth;
+                m_imgRec.height = newImgHeight;
+            }
+            std::cout << m_imgRec.y << " " << m_imgRec.x << " " << m_imgRec.width << " " << m_imgRec.height << " \n";
         }
     }
 
+    void setImageToDefaultCenterNScale() {
+        m_imgScale = 1.0;
+        m_imgRec.x = m_imgCenterPos.x;
+        m_imgRec.y = m_imgCenterPos.y;
+        m_imgRec.width = m_currImage.width;
+        m_imgRec.height = m_currImage.height;
+        m_imgCurrPos.x = m_imgRec.x;
+        m_imgCurrPos.y = m_imgRec.y;        
+    }
+
     void drawImage() {
-        if (m_isMaximized) {DrawTextureEx(m_currImageTexture, (Vector2){m_imgCenterPosX, m_imgCenterPosY}, 0, m_imgScale, WHITE); }
-        else { DrawTextureEx(m_currImageTexture, (Vector2){0, m_titleBarHeight}, 0, m_imgScale, WHITE); }
+        if (m_isMaximized) {DrawTextureEx(m_currImageTexture, m_imgCurrPos, 0, m_imgScale, WHITE); }
+        else { DrawTextureEx(m_currImageTexture, m_imgMinimizePos, 0, m_imgScale, WHITE); }
+        DrawRectangleRec(m_imgRec, RED);
+        // DrawRectangleRec(m_titleBarRec, YELLOW);
+        // std::cout << m_imgCurrPos.x << " " << m_imgCurrPos.y << " \n";
+    }
+
+    void drawStats() {
+        if (m_imgScale == 1) { DrawTextEx(m_font, TextFormat("%.2f Original Scale!", m_imgScale), Vector2{5, 5}, m_fontSize, 0, WHITE); }
+        else { DrawTextEx(m_font, TextFormat("%.2f", m_imgScale), Vector2{5, 5}, m_fontSize, 0, WHITE); }
     }
 
     int getWinIsClosedFlag() { return m_winIsClosed; }
@@ -358,21 +365,26 @@ int main(int argc, char* argv[]) {
     Vector2 dragOffset {};
     Vector2 winAbsPos {};
     Vector2 dragNewPos {};
+    int currScroll {};
+    int  prevScroll {};
 
     bool ctrl { false };
     while (!WindowShouldClose() && !win.getWinIsClosedFlag()) {
         const Vector2 mousePos = GetMousePosition();
+        // std::cout << mousePos.x << " " << mousePos.y << " \n";
+
         win.checkClickOrHoverOnTitleBar(mousePos);
         win.draggingLogic(mousePos, cursorPosVec, cursorX, cursorY, winAbsPos, dragOffset, dragNewPos);
-        win.zoomingInNOutLogic();
+        win.zoomingInNOutLogic(currScroll, prevScroll);
         
-        if (IsKeyDown(KEY_LEFT_ALT) && IsKeyDown(KEY_SPACE) && IsKeyPressed(KEY_X)) {
-            win.maximizeWindowBitch();
-        }
+        if (IsKeyPressed(KEY_F)) { win.maximizeWindowBitch(); }
+        if (IsKeyPressed(KEY_D)) { win.restoreWindowBitch(); }
+        if (IsKeyPressed(KEY_R)) { win.setImageToDefaultCenterNScale(); }
+        
         BeginDrawing();
             win.drawTitleBarBtns();
             win.drawImage();
-    
+            win.drawStats();
         EndDrawing();
     }
     UnloadImage(currImage);

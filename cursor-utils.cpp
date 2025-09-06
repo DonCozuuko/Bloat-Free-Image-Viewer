@@ -1,6 +1,6 @@
 #include <array>
 #include "windows.h"
-#include "cursor-pos.hpp"
+#include "cursor-utils.hpp"
 
 POINT cursor {};
 
@@ -15,4 +15,9 @@ const std::array<int, 2> FetchMonDimensions() {
     const int screenHeight = { GetSystemMetrics(SM_CYSCREEN) };
     const std::array<int, 2> dimensions { screenWidth, screenHeight };
     return dimensions;
+}
+
+const HCURSOR grabCloseCursor { LoadCursorFromFileA("./assets/grabbing.cur") };
+void setGrabCloseCursor() {
+    SetCursor(grabCloseCursor);
 }
