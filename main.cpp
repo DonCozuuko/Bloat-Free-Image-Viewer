@@ -2,18 +2,17 @@
 #include <vector>
 #include <array>
 #include <string>
+#include <filesystem>
 #include "raylib.h"
 
 #include "cursor-utils.hpp"
 
-// windows photo viewer has three resizing modes:
-// - has a minimum width and height + padding based on the images dimensions
-// - remembers the dimensions of the window from the previous session
-// - full screen mode + resizable
-
 enum Png { CLOSE, MAXIMIZE, MINIMIZE, RESTORE };
 
 constexpr int MAX_NUM_ICONS { 4 };
+constexpr char* imgStatOGScale { "1.0 Original Scale!" };
+constexpr char* shortCutsBlurb { "r = restore image default\nf = maximize\nd = restore down\nh,j,k,l vim nav\ni = hide this on/off" };
+bool isHidden { false };
 
 class Window {
 private:
@@ -47,7 +46,7 @@ private:
     Vector2 m_imgCenterPos;
     Vector2 m_imgMinimizePos { 0.0f, m_titleBarHeight };
     double m_imgScale { 1.0 };
-    char* m_fileName;
+    const char* m_fileName;
 
     float m_textStartPosX;  // this starting x pos will center the text on the titlebar (when not maximized)
     int m_titleBarLineWidth;
@@ -58,7 +57,7 @@ private:
     std::array<Rectangle, MAX_NUM_ICONS> m_btnRec;
 
 public:
-    Window(const Image& currImage, char* fileName)
+    Window(const Image& currImage, const char* fileName)
         :  m_winWidth { currImage.width }, m_winHeight { currImage.height + m_titleBarHeight }, m_currImage { currImage }
          , m_fileName { fileName }
     {
@@ -92,15 +91,14 @@ public:
         // the range of the y pos is [m_titleBarHeight, m_monHeight - 40] inclusive
         m_imgCenterPos.x = static_cast<int>(static_cast<float>(m_monWidth / 2.0) - static_cast<float>(m_currImage.width / 2.0));
         m_imgCenterPos.y = static_cast<int>(static_cast<float>(m_monHeight / 2.0) - static_cast<float>(m_currImage.height / 2.0) - 10.0);
- 
         m_imgCurrPos.x = 0;
         m_imgCurrPos.y = m_titleBarHeight;
-
+    
         m_imgRec.x = m_imgCurrPos.x;
         m_imgRec.y = m_imgCurrPos.y;
         m_imgRec.width = m_currImage.width;
         m_imgRec.height = m_currImage.height;
-        std::cout << m_imgRec.width << " " << m_imgRec.height << " \n";
+        // std::cout << m_imgRec.width << " " << m_imgRec.height << " \n";
     }
 
     void draggingLogic(const Vector2& mousePos, std::array<int, 2>& cursorPosVec, int& cursorX, int& cursorY,
@@ -280,22 +278,22 @@ public:
     }
 
     void zoomingInNOutLogic(int& currScroll, int& prevScroll) {
-        if (m_isMaximized) {
-            // std::cout << "You son of a bitch, im in!\n";
-            if (IsKeyDown(KEY_LEFT_CONTROL)) {
-                if (IsKeyPressed(KEY_EQUAL)) {
-                    m_imgScale += 0.05;
-                }
-                else if (IsKeyDown(KEY_EQUAL)) {
-                    m_imgScale += 0.05;
-                }
-                if (IsKeyPressed(KEY_MINUS)) {
-                    m_imgScale -= 0.05;
-                }
-                else if (IsKeyDown(KEY_MINUS)) {
-                    m_imgScale -= 0.05;
-                }
+        // std::cout << "You son of a bitch, im in!\n";
+        if (IsKeyDown(KEY_LEFT_CONTROL)) {
+            if (IsKeyPressed(KEY_EQUAL)) {
+                m_imgScale += 0.05;
             }
+            if (IsKeyPressed(KEY_MINUS)) {
+                m_imgScale -= 0.05;
+            }
+            const int newImgWidth { static_cast<int>(m_currImage.width * m_imgScale) };
+            const int newImgHeight { static_cast<int>(m_currImage.height * m_imgScale) };
+            m_imgCurrPos.x = static_cast<int>(m_imgRec.x - ((newImgWidth - m_imgRec.width) / 2.0));
+            m_imgCurrPos.y = static_cast<int>(m_imgRec.y - ((newImgHeight - m_imgRec.height) / 2.0));;
+            m_imgRec.x = m_imgCurrPos.x;
+            m_imgRec.y = m_imgCurrPos.y;
+            m_imgRec.width = newImgWidth;
+            m_imgRec.height = newImgHeight;
         }
         currScroll = static_cast<int>(GetMouseWheelMove());
         if (currScroll != 0) {
@@ -314,7 +312,7 @@ public:
                 m_imgRec.width = newImgWidth;
                 m_imgRec.height = newImgHeight;
             }
-            std::cout << m_imgRec.y << " " << m_imgRec.x << " " << m_imgRec.width << " " << m_imgRec.height << " \n";
+            // std::cout << m_imgRec.y << " " << m_imgRec.x << " " << m_imgRec.width << " " << m_imgRec.height << " \n";
         }
     }
 
@@ -328,6 +326,53 @@ public:
         m_imgCurrPos.y = m_imgRec.y;        
     }
 
+    void shortcuts(int& key) {
+        key = GetKeyPressed();
+        if (key == 0) { ; }
+        else {
+            switch (key) {
+                case KEY_Q:
+                    m_winIsClosed = true;
+                    break;
+                case KEY_F:
+                    maximizeWindowBitch();
+                    break;
+                case KEY_D:
+                    restoreWindowBitch();
+                    break;
+                case KEY_R:
+                    setImageToDefaultCenterNScale();
+                    break;
+                case KEY_J:
+                    m_imgCurrPos.y += 20;
+                    m_imgRec.y = m_imgCurrPos.y;
+                    // go down
+                    break;
+                case KEY_K:
+                    m_imgCurrPos.y -= 20;
+                    m_imgRec.y = m_imgCurrPos.y;
+                    // go up
+                    break;
+                case KEY_H:
+                    m_imgCurrPos.x -= 20;
+                    m_imgRec.x = m_imgCurrPos.x;
+                    // go left
+                    break;
+                case KEY_L:
+                    m_imgCurrPos.x += 20;
+                    m_imgRec.x = m_imgCurrPos.x;
+                    // go right
+                    break;
+                case KEY_I:
+                    if (!isHidden) { isHidden = true; }
+                    else { isHidden = false; }
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
     void drawImage() {
         if (m_isMaximized) {DrawTextureEx(m_currImageTexture, m_imgCurrPos, 0, m_imgScale, WHITE); }
         else { DrawTextureEx(m_currImageTexture, m_imgMinimizePos, 0, m_imgScale, WHITE); }
@@ -337,13 +382,17 @@ public:
     }
 
     void drawStats() {
-        if (m_imgScale == 1) { DrawTextEx(m_font, TextFormat("%.2f Original Scale!", m_imgScale), Vector2{5, 5}, m_fontSize, 0, WHITE); }
+        if (m_imgScale == 1.0) { DrawTextEx(m_font, imgStatOGScale, Vector2{5, 5}, m_fontSize, 0, WHITE); }
         else { DrawTextEx(m_font, TextFormat("%.2f", m_imgScale), Vector2{5, 5}, m_fontSize, 0, WHITE); }
+        if (!isHidden) { DrawTextEx(m_font, shortCutsBlurb, Vector2{5, 35}, m_fontSize, 0, WHITE); }
     }
 
     int getWinIsClosedFlag() { return m_winIsClosed; }
 };
 
+void parseFileNameFromPath() {
+    
+}
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
@@ -351,7 +400,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    char* fileName { argv[1] };
+    const char* fileName { argv[1] };
     const Image currImage { LoadImage(fileName) };
 
     SetConfigFlags(FLAG_WINDOW_UNDECORATED | FLAG_WINDOW_RESIZABLE);
@@ -368,18 +417,21 @@ int main(int argc, char* argv[]) {
     int currScroll {};
     int  prevScroll {};
 
-    bool ctrl { false };
+    int key {};
+
+    std::cout << GetDirectoryPath(fileName);
+
     while (!WindowShouldClose() && !win.getWinIsClosedFlag()) {
         const Vector2 mousePos = GetMousePosition();
         // std::cout << mousePos.x << " " << mousePos.y << " \n";
 
+        // window functions
         win.checkClickOrHoverOnTitleBar(mousePos);
         win.draggingLogic(mousePos, cursorPosVec, cursorX, cursorY, winAbsPos, dragOffset, dragNewPos);
         win.zoomingInNOutLogic(currScroll, prevScroll);
         
-        if (IsKeyPressed(KEY_F)) { win.maximizeWindowBitch(); }
-        if (IsKeyPressed(KEY_D)) { win.restoreWindowBitch(); }
-        if (IsKeyPressed(KEY_R)) { win.setImageToDefaultCenterNScale(); }
+        // shortcuts
+        win.shortcuts(key);
         
         BeginDrawing();
             win.drawTitleBarBtns();

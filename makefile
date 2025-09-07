@@ -17,6 +17,6 @@ s:
 		&& ./image-loader ./assets/test-imgs/speed.png
 
 m:
-	g++ main.cpp cursor-utils.cpp -o \
+	g++ -std=c++17 main.cpp cursor-utils.cpp -o \
 		image-loader -Iinclude -Llib -lraylib -lopengl32 -lgdi32 -lwinmm\
 		&& ./image-loader ./assets/test-imgs/markiplier-chins.jpg
