@@ -1,3 +1,4 @@
+#include <iostream>
 #include <array>
 #include "windows.h"
 #include "cursor-utils.hpp"
@@ -20,4 +21,11 @@ const std::array<int, 2> FetchMonDimensions() {
 const HCURSOR grabCloseCursor { LoadCursorFromFileA("./assets/grabbing.cur") };
 void setGrabCloseCursor() {
     SetCursor(grabCloseCursor);
+}
+
+std::string GetFullPath(const std::string& filePath) {
+    // Get the full path name (absolute path)
+    char fullPath[MAX_PATH];
+    DWORD length = GetFullPathNameA(filePath.c_str(), MAX_PATH, fullPath, nullptr);
+    return fullPath;
 }

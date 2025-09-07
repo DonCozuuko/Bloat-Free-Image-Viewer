@@ -7,4 +7,6 @@ const std::array<int, 2> FetchMonDimensions();
 
 void setGrabCloseCursor();
 
+std::string GetFullPath(const std::string& filePath);
+
 #endif
