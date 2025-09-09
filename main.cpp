@@ -13,11 +13,46 @@ constexpr char* imgStatOGScale { "1.0 Original Scale!" };
 constexpr char* shortCutsBlurb { "r = restore image default\nf = maximize\nd = restore down\nh,j,k,l vim nav\ni = hide this on/off\ns = filename/filepath" };
 bool isHidden { false };
 bool showFilePath { false };
+bool isGif { false };
 
-void parseFileNameFromPath() {
-    ;
+
+// TODO: fileName not working for some reason, I think it has to do something with slicedStr return being destroyed on stack.
+namespace StaticStrings {
+    std::string fileName;
+    std::string exePath;
 }
 
+void parseFile(const std::string& fileName, bool parseNameFromPath) {
+    // parseFileNameFromPath
+    // parsePathFromFilePath
+    std::string slicedStr {};
+    int i {};
+    int fileNameSize { static_cast<int>(fileName.size()) - 1 };
+    if (parseNameFromPath) {
+        for (i = fileNameSize; i > -1; --i) {
+            if (fileName.at(i) == '/') {
+                break;
+            }
+        }
+        StaticStrings::fileName = fileName.substr(i + 1, fileNameSize - i);
+    }
+    else {  // !parseNameFromPath == parsePathFromFilePath
+        for (i = fileNameSize; i > -1; --i) {
+            if (fileName.at(i) == '/') {
+                break;
+            }
+        }
+        StaticStrings::exePath = fileName.substr(0, i + 1);
+    }
+}
+
+void ConvertToForwardSlashes(std::string& path) {
+    for (char& c : path) {
+        if (c == '\\') {
+            c = '/';
+        }
+    }
+}
 
 class Window {
 private:
@@ -28,7 +63,7 @@ private:
     static constexpr int m_titleBarHeight { 30 };
     static constexpr int m_titleBtnWidth { 50 };
     static constexpr int m_fontSize { 16 };
-    Font m_font { LoadFontEx("./assets/JetBrainsMono-Bold.ttf", m_fontSize, 0, 0) };  // LoadFontEx() must be called after InitWindow()
+    Font m_font;  // LoadFontEx() must be called after InitWindow()
     const Color m_windowColor { 36, 40, 59, 255 };
     const Color m_hoverColor { 62, 64, 80, 255 };
     int m_closeBtnStartPosX;
@@ -66,37 +101,58 @@ private:
     std::array<bool, MAX_NUM_ICONS> m_btnIsHovered { false, false, false, false };
     std::array<Rectangle, MAX_NUM_ICONS> m_btnRec;
 
-    std::string m_absFilePath;
+    std::string m_filePath;  // absolute path for the file to display
+    std::string m_exePath;  // relative (absolute) path for where the exe is located for loading assets 
 
 public:
     Window(const Image& currImage, const char* fileName)
         :  m_winWidth { currImage.width }, m_winHeight { currImage.height + m_titleBarHeight }, m_currImage { currImage }
-         , m_fileName { fileName }
     {
+        
         const std::array<int, 2> monDims { FetchMonDimensions() };
         m_monWidth = monDims.at(0);
         m_monHeight = monDims.at(1);
         m_closeBtnStartPosX = m_winWidth - m_titleBtnWidth;
-        m_maxBtnStartPosX = m_closeBtnStartPosX - m_titleBtnWidth;
-        m_minBtnStartPosX = m_maxBtnStartPosX - m_titleBtnWidth;
-        m_currImageTexture = LoadTextureFromImage(m_currImage);
+        m_maxBtnStartPosX   = m_closeBtnStartPosX - m_titleBtnWidth;
+        m_minBtnStartPosX   = m_maxBtnStartPosX - m_titleBtnWidth;
+        m_currImageTexture  = LoadTextureFromImage(m_currImage);
 
-        m_icons.at(CLOSE)    = LoadTexture("./assets/close.png");
-        m_icons.at(MAXIMIZE) = LoadTexture("./assets/maximize.png");
-        m_icons.at(MINIMIZE) = LoadTexture("./assets/minimize.png");
-        m_icons.at(RESTORE)  = LoadTexture("./assets/restore.png"); 
+        // parse fileName from ./fileName
+        parseFile(std::string(fileName), true);
+        m_fileName = StaticStrings::fileName.c_str();
+        // parse exePath from exePath/image-loader.exe
+        std::string exePath { GetFullPath("", false) };
+        ConvertToForwardSlashes(exePath);
+        parseFile(exePath, false);
+        m_exePath = StaticStrings::exePath;
+
+        std::string strFileName { m_fileName };
+        std::string filePath { GetFullPath(strFileName, true) };
+        ConvertToForwardSlashes(filePath);
+        m_filePath = filePath;
+
+        const std::string closeAssetPath { m_exePath + "assets/close.png" };
+        const std::string maxAssetPath   { m_exePath + "assets/maximize.png" };
+        const std::string minAssetPath   { m_exePath + "assets/minimize.png" };
+        const std::string restAssetPath  { m_exePath + "assets/restore.png" };
+        const std::string fontAssetPath  { m_exePath + "assets/JetBrainsMono-Bold.ttf" };
+        
+        m_font = LoadFontEx(fontAssetPath.c_str(), m_fontSize, 0, 0);
+        
+        m_icons.at(CLOSE)    = LoadTexture(closeAssetPath.c_str());
+        m_icons.at(MAXIMIZE) = LoadTexture(maxAssetPath.c_str());
+        m_icons.at(MINIMIZE) = LoadTexture(minAssetPath.c_str());
+        m_icons.at(RESTORE)  = LoadTexture(restAssetPath.c_str()); 
 
         m_btnRec.at(CLOSE)    = Rectangle { static_cast<float>(m_closeBtnStartPosX), 0.0f, static_cast<float>(m_titleBtnWidth), static_cast<float>(m_titleBarHeight) };
         m_btnRec.at(MAXIMIZE) = Rectangle { static_cast<float>(m_maxBtnStartPosX), 0.0f, static_cast<float>(m_titleBtnWidth), static_cast<float>(m_titleBarHeight) };
         m_btnRec.at(MINIMIZE) = Rectangle { static_cast<float>(m_minBtnStartPosX), 0.0f, static_cast<float>(m_titleBtnWidth), static_cast<float>(m_titleBarHeight) };
         m_btnRec.at(RESTORE)  = Rectangle { static_cast<float>(m_maxBtnStartPosX), 0.0f, static_cast<float>(m_titleBtnWidth), static_cast<float>(m_titleBarHeight) };
 
-        std::string strFileName { m_fileName };
-        m_absFilePath = GetFullPath(strFileName);
 
         const Vector2 lengthFN { MeasureTextEx(m_font, m_fileName, m_fontSize, 0) } ;
         m_fileNameLengthPixels = lengthFN.x;
-        const Vector2 lengthFP { MeasureTextEx(m_font, m_absFilePath.c_str(), m_fontSize, 0) } ;
+        const Vector2 lengthFP { MeasureTextEx(m_font, m_filePath.c_str(), m_fontSize, 0) } ;
         m_filePathLengthPixels = lengthFP.x;
 
         m_fileNameStartPosX    = static_cast<int>(static_cast<float>(m_currImage.width / 2.0) - static_cast<float>(m_fileNameLengthPixels / 2.0));
@@ -120,19 +176,15 @@ public:
         m_imgRec.y = m_imgCurrPos.y;
         m_imgRec.width = m_currImage.width;
         m_imgRec.height = m_currImage.height;
-
-        std::cout << m_filePathLengthPixels << " \n";
     }
 
     void draggingLogic(const Vector2& mousePos, std::array<int, 2>& cursorPosVec, int& cursorX, int& cursorY,
                         Vector2& winAbsPos, Vector2& dragOffset, Vector2& dragNewPos) {
         if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             if (CheckCollisionPointRec(mousePos, m_titleBarRec)) {
-                std::cout << "I DONT GIVE A FUCKKKK\n";
                 m_titleBarIsClicked = true;
             }
             else if (m_isMaximized && CheckCollisionPointRec(mousePos, m_imgRec)) {
-                std::cout << "JUST SHAKE THAT ASS BITCH\n";
                 m_imgIsClicked = true;
                 setGrabCloseCursor();
             }
@@ -301,7 +353,7 @@ public:
             }
         }
         if (showFilePath) {
-            DrawTextEx(m_font, m_absFilePath.c_str(), (Vector2){m_currTitBarTextStartPosX, 5.0f}, m_fontSize, 0, RAYWHITE);
+            DrawTextEx(m_font, m_filePath.c_str(), (Vector2){m_currTitBarTextStartPosX, 5.0f}, m_fontSize, 0, RAYWHITE);
             DrawLine(0, m_titleBarHeight, m_titleBarLineWidth, m_titleBarHeight, WHITE);
             DrawLine(m_currTitBarTextStartPosX, m_titleBarHeight, m_currTitBarTextStartPosX + m_filePathLengthPixels, m_titleBarHeight, RED);
         }
@@ -313,7 +365,6 @@ public:
     }
 
     void zoomingInNOutLogic(int& currScroll, int& prevScroll) {
-        // std::cout << "You son of a bitch, im in!\n";
         if (IsKeyDown(KEY_LEFT_CONTROL)) {
             if (IsKeyPressed(KEY_EQUAL)) {
                 m_imgScale += 0.05;
@@ -332,7 +383,7 @@ public:
         }
         currScroll = static_cast<int>(GetMouseWheelMove());
         if (currScroll != 0) {
-            m_imgScale += (0.05 * currScroll);
+            m_imgScale += static_cast<double>(0.05 * currScroll);
             if (m_imgScale == 1.0) {
                 m_imgRec.width = m_currImage.width;
                 m_imgRec.height = m_currImage.height;
@@ -347,7 +398,6 @@ public:
                 m_imgRec.width = newImgWidth;
                 m_imgRec.height = newImgHeight;
             }
-            // std::cout << m_imgRec.y << " " << m_imgRec.x << " " << m_imgRec.width << " " << m_imgRec.height << " \n";
         }
     }
 
@@ -421,11 +471,16 @@ public:
     }
 
     void drawImage() {
-        if (m_isMaximized) {DrawTextureEx(m_currImageTexture, m_imgCurrPos, 0, m_imgScale, WHITE); }
-        else { DrawTextureEx(m_currImageTexture, m_imgMinimizePos, 0, m_imgScale, WHITE); }
+        if (isGif) {
+            if (m_isMaximized) {DrawTextureEx(m_currImageTexture, m_imgCurrPos, 0, m_imgScale, WHITE); }
+            else { DrawTextureEx(m_currImageTexture, m_imgMinimizePos, 0, m_imgScale, WHITE); }
+        }
+        else {
+            if (m_isMaximized) {DrawTextureEx(m_currImageTexture, m_imgCurrPos, 0, m_imgScale, WHITE); }
+            else { DrawTextureEx(m_currImageTexture, m_imgMinimizePos, 0, m_imgScale, WHITE); }
+        }
         // DrawRectangleRec(m_imgRec, RED);
         // DrawRectangleRec(m_titleBarRec, YELLOW);
-        // std::cout << m_imgCurrPos.x << " " << m_imgCurrPos.y << " \n";
     }
 
     void drawStats() {
@@ -443,9 +498,10 @@ int main(int argc, char* argv[]) {
         std::cout << "Input an image file you stupid fuck\n";
         return 1;
     }
-
+    int frames = 60;
     const char* fileName { argv[1] };
-    const Image currImage { LoadImage(fileName) };
+    if (IsFileExtension(fileName, ".gif")) { isGif = true; }
+    const Image currImage { (isGif) ? LoadImage(fileName) : LoadImageAnim(fileName, &frames) };
 
     SetConfigFlags(FLAG_WINDOW_UNDECORATED | FLAG_WINDOW_RESIZABLE);
     InitWindow(currImage.width, currImage.height, "Enjoy Your Images Bitch!");
@@ -463,11 +519,8 @@ int main(int argc, char* argv[]) {
 
     int key {};
 
-    // std::wcout << fullPath;
     while (!WindowShouldClose() && !win.getWinIsClosedFlag()) {
         const Vector2 mousePos = GetMousePosition();
-        // std::cout << mousePos.x << " " << mousePos.y << " \n";
-
         // window functions
         win.checkClickOrHoverOnTitleBar(mousePos);
         win.draggingLogic(mousePos, cursorPosVec, cursorX, cursorY, winAbsPos, dragOffset, dragNewPos);

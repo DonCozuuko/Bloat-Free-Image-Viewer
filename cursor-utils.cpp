@@ -23,9 +23,10 @@ void setGrabCloseCursor() {
     SetCursor(grabCloseCursor);
 }
 
-std::string GetFullPath(const std::string& filePath) {
-    // Get the full path name (absolute path)
-    char fullPath[MAX_PATH];
-    DWORD length = GetFullPathNameA(filePath.c_str(), MAX_PATH, fullPath, nullptr);
-    return fullPath;
+std::string GetFullPath(const std::string& fileName, bool getFilePath) {
+    char buffer[MAX_PATH];
+    if (getFilePath) { GetFullPathNameA(fileName.c_str(), MAX_PATH, buffer, nullptr); }
+    else { GetModuleFileNameA(NULL, buffer, MAX_PATH); }
+    // !getFilePath == getExePath
+    return buffer;
 }

@@ -1,7 +1,6 @@
 main:
 	g++ main.cpp cursor-utils.cpp -o \
-		image-loader -Iinclude -Llib -lraylib -lopengl32 -lgdi32 -lwinmm\
-		&& ./image-loader
+		image-loader -Iinclude -Llib -lraylib -lopengl32 -lgdi32 -lwinmm
 
 gui:
 	g++ main.cpp cursor-utils.cpp -o \
@@ -24,5 +23,10 @@ s:
 
 m:
 	g++ -std=c++17 main.cpp cursor-utils.cpp -o \
-		image-loader -Iinclude -Llib -lraylib -lopengl32 -lgdi32 -lwinmm\
+		image-loader-debug -Iinclude -Llib -lraylib -lopengl32 -lgdi32 -lwinmm\
 		&& ./image-loader ./markiplier-chins.jpg
+
+g:
+	g++ -std=c++17 main.cpp cursor-utils.cpp -o \
+		image-loader -Iinclude -Llib -lraylib -lopengl32 -lgdi32 -lwinmm\
+		&& ./image-loader ./assets/test-imgs/peele.gif
