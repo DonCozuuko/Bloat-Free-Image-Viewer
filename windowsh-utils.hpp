@@ -1,5 +1,5 @@
-#ifndef CURSOR_UITLS
-#define CURSOR_UTILS
+#ifndef WINDOWSH_UITLS
+#define WINDOWSH_UTILS
 
 #include <array>
 std::array<int, 2> FetchCursorPosition();

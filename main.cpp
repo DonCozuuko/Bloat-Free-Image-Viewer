@@ -3,17 +3,20 @@
 #include <array>
 #include <string>
 #include "raylib.h"
+#include "windowsh-utils.hpp"
 
-#include "cursor-utils.hpp"
 
 enum Png { CLOSE, MAXIMIZE, MINIMIZE, RESTORE };
 
 constexpr int MAX_NUM_ICONS { 4 };
 constexpr char* imgStatOGScale { "1.0 Original Scale!" };
-constexpr char* shortCutsBlurb { "r = restore image default\nf = maximize\nd = restore down\nh,j,k,l vim nav\ni = hide this on/off\ns = filename/filepath" };
-bool isHidden { false };
+constexpr char* shortCutsBlurb1 { "i = show/hide shortcuts" };
+constexpr char* shortCutsBlurb2 { "r = restore image default\nf = maximize\nd = restore down\nh,j,k,l vim nav\ns = filename/filepath" };
+bool isHidden { true };
 bool showFilePath { false };
-bool isGif { false };
+bool imgWidthBiggerThanWinWidth { false };
+bool imgHeightBiggerThanWinHeight { false };
+bool imgHWBiggerThanWinWH { false };
 
 
 // TODO: fileName not working for some reason, I think it has to do something with slicedStr return being destroyed on stack.
@@ -56,22 +59,50 @@ void ConvertToForwardSlashes(std::string& path) {
 
 class Window {
 private:
+    // important window measurements
     int m_winWidth;
     int m_winHeight;
     int m_monWidth;
     int m_monHeight;
-    static constexpr int m_titleBarHeight { 30 };
+    static constexpr int m_titleBarHeight { 30 };  // top
+    static constexpr int m_infoBarHeight { 30 };   // bot
     static constexpr int m_titleBtnWidth { 50 };
-    static constexpr int m_fontSize { 16 };
-    Font m_font;  // LoadFontEx() must be called after InitWindow()
+    // important image measurements
+    Image m_currImage;
+    Texture2D m_currImageTexture;
+    Rectangle m_imgRec;
+    Vector2 m_imgCurrPos;
+    Vector2 m_imgCenterPos;
+    Vector2 m_imgMinimizePos { 0.0f, m_titleBarHeight };
+    // Vector2 m_imgMaximizePos { 0.0f, m_titleBarHeight };
+    double m_currImgScale { 1.0 };
+    double m_imgFittedScale;
+    // title bar
     const Color m_windowColor { 36, 40, 59, 255 };
     const Color m_hoverColor { 62, 64, 80, 255 };
+    const char* m_fileName;
+    std::string m_exePath;  // relative (absolute) path for where the exe is located for loading assets 
+    std::string m_filePath;  // absolute path for the file to display
+    Font m_font;  // LoadFontEx() must be called after InitWindow()
+    static constexpr int m_fontSize { 16 };
     int m_closeBtnStartPosX;
     int m_maxBtnStartPosX;
     int m_minBtnStartPosX;
+    int m_titleBarLineWidth;
+    Rectangle m_titleBarRec;
+    Rectangle m_infoBarRec;
+    std::array<Texture2D, MAX_NUM_ICONS> m_icons;
+    std::array<bool, MAX_NUM_ICONS> m_btnIsHovered { false, false, false, false };
+    std::array<Rectangle, MAX_NUM_ICONS> m_btnRec;
     int m_fileNameLengthPixels;
     int m_filePathLengthPixels;
+    float m_fileNameStartPosX;  // this starting x pos will center the text on the titlebar
+    float m_fileNameStartPosXMax;
+    float m_filePathStartPosX;
+    float m_filePathStartPosXMax;
+    float m_currTitBarTextStartPosX;
     
+    // window related flags for interactivity
     bool m_isMaximized { false };
     bool m_btnIsPressed { false };
     bool m_winIsClosed { false };
@@ -79,43 +110,37 @@ private:
     bool m_winIsDragged { false };
     bool m_imgIsClicked { false };
     bool m_imgIsDragged { false };
-
-    Image m_currImage;
-    Texture2D m_currImageTexture;
-    Rectangle m_imgRec;
-    Vector2 m_imgCurrPos;
-    Vector2 m_imgCenterPos;
-    Vector2 m_imgMinimizePos { 0.0f, m_titleBarHeight };
-    double m_imgScale { 1.0 };
-    const char* m_fileName;
-
-    float m_fileNameStartPosX;  // this starting x pos will center the text on the titlebar
-    float m_fileNameStartPosXMax;
-    float m_filePathStartPosX;
-    float m_filePathStartPosXMax;
-    float m_currTitBarTextStartPosX;
-    int m_titleBarLineWidth;
-    Rectangle m_titleBarRec;
-
-    std::array<Texture2D, MAX_NUM_ICONS> m_icons;
-    std::array<bool, MAX_NUM_ICONS> m_btnIsHovered { false, false, false, false };
-    std::array<Rectangle, MAX_NUM_ICONS> m_btnRec;
-
-    std::string m_filePath;  // absolute path for the file to display
-    std::string m_exePath;  // relative (absolute) path for where the exe is located for loading assets 
-
+    
 public:
-    Window(const Image& currImage, const char* fileName)
-        :  m_winWidth { currImage.width }, m_winHeight { currImage.height + m_titleBarHeight }, m_currImage { currImage }
+    Window(const int monWidth, const int monHeight, const int initWinWidth, const int initWinHeight, const Image& currImage, const char* fileName, const double& imgFittedScale)
+        :  m_monWidth { monWidth }, m_monHeight { monHeight }, m_winWidth { initWinWidth }, m_winHeight { initWinHeight }, m_currImage { currImage }, m_imgFittedScale { imgFittedScale }
     {
-        
-        const std::array<int, 2> monDims { FetchMonDimensions() };
-        m_monWidth = monDims.at(0);
-        m_monHeight = monDims.at(1);
-        m_closeBtnStartPosX = m_winWidth - m_titleBtnWidth;
-        m_maxBtnStartPosX   = m_closeBtnStartPosX - m_titleBtnWidth;
-        m_minBtnStartPosX   = m_maxBtnStartPosX - m_titleBtnWidth;
         m_currImageTexture  = LoadTextureFromImage(m_currImage);
+        m_imgCurrPos.x = 0;
+        m_imgCurrPos.y = m_titleBarHeight;
+        m_imgRec.x = m_imgCurrPos.x;
+        m_imgRec.y = m_imgCurrPos.y;
+        m_imgRec.width = m_currImage.width;
+        m_imgRec.height = m_currImage.height;
+        if (m_imgFittedScale != 1.0) {
+            m_currImgScale = m_imgFittedScale;
+            if (imgHWBiggerThanWinWH) {
+                m_imgMinimizePos.x = static_cast<int>((m_winWidth - (m_currImgScale * m_currImage.width)) / 2.0);
+                m_imgMinimizePos.y = static_cast<int>((m_winHeight - (m_currImgScale * m_currImage.height)) / 2.0);
+            }
+            else if (imgHeightBiggerThanWinHeight) {
+                m_imgMinimizePos.x = static_cast<int>((m_winWidth - (m_currImgScale * m_currImage.width)) / 2.0);
+            }
+            else if (imgWidthBiggerThanWinWidth) {
+                m_imgMinimizePos.y = static_cast<int>((m_winHeight - (m_currImgScale * m_currImage.height)) / 2.0);
+            }
+            m_imgCenterPos.x = static_cast<int>((m_monWidth - (m_currImgScale * m_currImage.width)) / 2.0);
+            m_imgCenterPos.y = static_cast<int>(((m_monHeight - 40.0) - (m_currImgScale * m_currImage.height)) / 2.0);
+        }
+        else {
+            m_imgCenterPos.x = static_cast<int>((m_monWidth - m_currImage.width) / 2.0);
+            m_imgCenterPos.y = static_cast<int>(((m_monHeight - 40.0) - m_currImage.height - 10.0) / 2.0);
+        }
 
         // parse fileName from ./fileName
         parseFile(std::string(fileName), true);
@@ -125,7 +150,7 @@ public:
         ConvertToForwardSlashes(exePath);
         parseFile(exePath, false);
         m_exePath = StaticStrings::exePath;
-
+        // get file absolute path
         std::string strFileName { m_fileName };
         std::string filePath { GetFullPath(strFileName, true) };
         ConvertToForwardSlashes(filePath);
@@ -138,45 +163,37 @@ public:
         const std::string fontAssetPath  { m_exePath + "assets/JetBrainsMono-Bold.ttf" };
         
         m_font = LoadFontEx(fontAssetPath.c_str(), m_fontSize, 0, 0);
-        
-        m_icons.at(CLOSE)    = LoadTexture(closeAssetPath.c_str());
-        m_icons.at(MAXIMIZE) = LoadTexture(maxAssetPath.c_str());
-        m_icons.at(MINIMIZE) = LoadTexture(minAssetPath.c_str());
-        m_icons.at(RESTORE)  = LoadTexture(restAssetPath.c_str()); 
-
-        m_btnRec.at(CLOSE)    = Rectangle { static_cast<float>(m_closeBtnStartPosX), 0.0f, static_cast<float>(m_titleBtnWidth), static_cast<float>(m_titleBarHeight) };
-        m_btnRec.at(MAXIMIZE) = Rectangle { static_cast<float>(m_maxBtnStartPosX), 0.0f, static_cast<float>(m_titleBtnWidth), static_cast<float>(m_titleBarHeight) };
-        m_btnRec.at(MINIMIZE) = Rectangle { static_cast<float>(m_minBtnStartPosX), 0.0f, static_cast<float>(m_titleBtnWidth), static_cast<float>(m_titleBarHeight) };
-        m_btnRec.at(RESTORE)  = Rectangle { static_cast<float>(m_maxBtnStartPosX), 0.0f, static_cast<float>(m_titleBtnWidth), static_cast<float>(m_titleBarHeight) };
-
-
-        const Vector2 lengthFN { MeasureTextEx(m_font, m_fileName, m_fontSize, 0) } ;
-        m_fileNameLengthPixels = lengthFN.x;
-        const Vector2 lengthFP { MeasureTextEx(m_font, m_filePath.c_str(), m_fontSize, 0) } ;
-        m_filePathLengthPixels = lengthFP.x;
-
-        m_fileNameStartPosX    = static_cast<int>(static_cast<float>(m_currImage.width / 2.0) - static_cast<float>(m_fileNameLengthPixels / 2.0));
-        m_fileNameStartPosXMax = static_cast<int>(static_cast<float>(m_monWidth / 2.0) - static_cast<float>(m_fileNameLengthPixels / 2.0));
-        m_filePathStartPosX    = static_cast<int>(static_cast<float>(m_currImage.width / 2.0) - static_cast<float>(m_filePathLengthPixels / 2.0));
-        m_filePathStartPosXMax = static_cast<int>(static_cast<float>(m_monWidth / 2.0) - static_cast<float>(m_filePathLengthPixels / 2.0));
-        m_currTitBarTextStartPosX = m_fileNameStartPosX;        
-
-        m_titleBarLineWidth = m_currImage.width;
+        m_closeBtnStartPosX = m_winWidth - m_titleBtnWidth;
+        m_maxBtnStartPosX = m_closeBtnStartPosX - m_titleBtnWidth;
+        m_minBtnStartPosX = m_maxBtnStartPosX - m_titleBtnWidth;
+        m_titleBarLineWidth = m_winWidth;
         m_titleBarRec.x = 0;
         m_titleBarRec.y = 0;
         m_titleBarRec.width = m_minBtnStartPosX;
         m_titleBarRec.height = m_titleBarHeight;
-        // the range of the y pos is [m_titleBarHeight, m_monHeight - 40] inclusive
-        m_imgCenterPos.x = static_cast<int>(static_cast<float>(m_monWidth / 2.0) - static_cast<float>(m_currImage.width / 2.0));
-        m_imgCenterPos.y = static_cast<int>(static_cast<float>(m_monHeight / 2.0) - static_cast<float>(m_currImage.height / 2.0) - 10.0);
-        m_imgCurrPos.x = 0;
-        m_imgCurrPos.y = m_titleBarHeight;
-    
-        m_imgRec.x = m_imgCurrPos.x;
-        m_imgRec.y = m_imgCurrPos.y;
-        m_imgRec.width = m_currImage.width;
-        m_imgRec.height = m_currImage.height;
+        m_infoBarRec.x = 0;
+        m_infoBarRec.y = m_winHeight - m_titleBarHeight;
+        m_infoBarRec.width = m_winWidth;
+        m_infoBarRec.height = m_titleBarHeight;
+        // m_infoBarRec.x = m_winHeight;
+        // m_infoBarRec shit
+        m_icons.at(CLOSE)    = LoadTexture(closeAssetPath.c_str());
+        m_icons.at(MAXIMIZE) = LoadTexture(maxAssetPath.c_str());
+        m_icons.at(MINIMIZE) = LoadTexture(minAssetPath.c_str());
+        m_icons.at(RESTORE)  = LoadTexture(restAssetPath.c_str()); 
+        m_btnRec.at(CLOSE)    = Rectangle { static_cast<float>(m_closeBtnStartPosX), 0.0f, static_cast<float>(m_titleBtnWidth), static_cast<float>(m_titleBarHeight) };
+        m_btnRec.at(MAXIMIZE) = Rectangle { static_cast<float>(m_maxBtnStartPosX), 0.0f, static_cast<float>(m_titleBtnWidth), static_cast<float>(m_titleBarHeight) };
+        m_btnRec.at(MINIMIZE) = Rectangle { static_cast<float>(m_minBtnStartPosX), 0.0f, static_cast<float>(m_titleBtnWidth), static_cast<float>(m_titleBarHeight) };
+        m_btnRec.at(RESTORE)  = Rectangle { static_cast<float>(m_maxBtnStartPosX), 0.0f, static_cast<float>(m_titleBtnWidth), static_cast<float>(m_titleBarHeight) };
+        m_fileNameLengthPixels = static_cast<int>(MeasureTextEx(m_font, m_fileName, m_fontSize, 0).x);
+        m_filePathLengthPixels = static_cast<int>(MeasureTextEx(m_font, m_filePath.c_str(), m_fontSize, 0).x);
+        m_fileNameStartPosX = static_cast<int>(static_cast<float>(m_winWidth / 2.0) - static_cast<float>(m_fileNameLengthPixels / 2.0));
+        m_fileNameStartPosXMax = static_cast<int>(static_cast<float>(m_monWidth / 2.0) - static_cast<float>(m_fileNameLengthPixels / 2.0));
+        m_filePathStartPosX = static_cast<int>(static_cast<float>(m_winWidth / 2.0) - static_cast<float>(m_filePathLengthPixels / 2.0));
+        m_filePathStartPosXMax = static_cast<int>(static_cast<float>(m_monWidth / 2.0) - static_cast<float>(m_filePathLengthPixels / 2.0));
+        m_currTitBarTextStartPosX = m_fileNameStartPosX;   
     }
+
 
     void draggingLogic(const Vector2& mousePos, std::array<int, 2>& cursorPosVec, int& cursorX, int& cursorY,
                         Vector2& winAbsPos, Vector2& dragOffset, Vector2& dragNewPos) {
@@ -293,6 +310,7 @@ public:
         else { m_currTitBarTextStartPosX = m_fileNameStartPosXMax; }
         
         m_titleBarLineWidth = m_monWidth;
+        m_infoBarRec.width = m_monWidth;
         m_titleBarRec.x = 0;
         m_titleBarRec.y = 0;
         m_titleBarRec.width = m_btnRec[MINIMIZE].x;
@@ -315,7 +333,8 @@ public:
         if (showFilePath) { m_currTitBarTextStartPosX = m_filePathStartPosX; }
         else { m_currTitBarTextStartPosX = m_fileNameStartPosX; }
 
-        m_titleBarLineWidth = m_currImage.width;
+        m_titleBarLineWidth = m_winWidth;
+        m_infoBarRec.width = m_winWidth;
         m_titleBarRec.x = 0;
         m_titleBarRec.y = 0;
         m_titleBarRec.width = m_minBtnStartPosX;
@@ -327,53 +346,16 @@ public:
         m_imgRec.y = m_imgCurrPos.y;
     }
 
-    void drawTitleBarBtns() {
-        ClearBackground(m_windowColor);
-        
-        for (int i {}; i < MAX_NUM_ICONS; ++i) {
-            if (!m_isMaximized && i == RESTORE) {
-                continue;
-            }
-            if (m_isMaximized && i == MAXIMIZE) {
-                continue;
-            }
-            
-            if (i != CLOSE) {
-                (m_btnIsHovered[i]) ? DrawRectangleRec(m_btnRec[i], m_hoverColor) : DrawRectangleRec(m_btnRec[i], BLANK);  
-            }
-            else {
-                (m_btnIsHovered[CLOSE]) ? DrawRectangleRec(m_btnRec[CLOSE], RED) : DrawRectangleRec(m_btnRec[CLOSE], BLANK);  
-            }
-
-            if (i == RESTORE) {
-                DrawTextureEx(m_icons[RESTORE], (Vector2){m_btnRec[RESTORE].x + 15, m_btnRec[RESTORE].y + 6}, 0, 0.5f, WHITE);
-            }
-            else {
-                DrawTextureEx(m_icons[i], (Vector2){m_btnRec[i].x + 13, m_btnRec[i].y + 2}, 0, 1.0f, WHITE);
-            }
-        }
-        if (showFilePath) {
-            DrawTextEx(m_font, m_filePath.c_str(), (Vector2){m_currTitBarTextStartPosX, 5.0f}, m_fontSize, 0, RAYWHITE);
-            DrawLine(0, m_titleBarHeight, m_titleBarLineWidth, m_titleBarHeight, WHITE);
-            DrawLine(m_currTitBarTextStartPosX, m_titleBarHeight, m_currTitBarTextStartPosX + m_filePathLengthPixels, m_titleBarHeight, RED);
-        }
-        else {
-            DrawTextEx(m_font, m_fileName, (Vector2){m_currTitBarTextStartPosX, 5.0f}, m_fontSize, 0, RAYWHITE);
-            DrawLine(0, m_titleBarHeight, m_titleBarLineWidth, m_titleBarHeight, WHITE);
-            DrawLine(m_currTitBarTextStartPosX, m_titleBarHeight, m_currTitBarTextStartPosX + m_fileNameLengthPixels, m_titleBarHeight, RED);
-        }
-    }
-
     void zoomingInNOutLogic(int& currScroll, int& prevScroll) {
         if (IsKeyDown(KEY_LEFT_CONTROL)) {
             if (IsKeyPressed(KEY_EQUAL)) {
-                m_imgScale += 0.05;
+                m_currImgScale += 0.05;
             }
             if (IsKeyPressed(KEY_MINUS)) {
-                m_imgScale -= 0.05;
+                m_currImgScale -= 0.05;
             }
-            const int newImgWidth { static_cast<int>(m_currImage.width * m_imgScale) };
-            const int newImgHeight { static_cast<int>(m_currImage.height * m_imgScale) };
+            const int newImgWidth { static_cast<int>(m_currImage.width * m_currImgScale) };
+            const int newImgHeight { static_cast<int>(m_currImage.height * m_currImgScale) };
             m_imgCurrPos.x = static_cast<int>(m_imgRec.x - ((newImgWidth - m_imgRec.width) / 2.0));
             m_imgCurrPos.y = static_cast<int>(m_imgRec.y - ((newImgHeight - m_imgRec.height) / 2.0));;
             m_imgRec.x = m_imgCurrPos.x;
@@ -383,14 +365,14 @@ public:
         }
         currScroll = static_cast<int>(GetMouseWheelMove());
         if (currScroll != 0) {
-            m_imgScale += static_cast<double>(0.05 * currScroll);
-            if (m_imgScale == 1.0) {
+            m_currImgScale += static_cast<double>(0.05 * currScroll);
+            if (m_currImgScale == 1.0) {
                 m_imgRec.width = m_currImage.width;
                 m_imgRec.height = m_currImage.height;
             }
             else {
-                const int newImgWidth { static_cast<int>(m_currImage.width * m_imgScale) };
-                const int newImgHeight { static_cast<int>(m_currImage.height * m_imgScale) };
+                const int newImgWidth { static_cast<int>(m_currImage.width * m_currImgScale) };
+                const int newImgHeight { static_cast<int>(m_currImage.height * m_currImgScale) };
                 m_imgCurrPos.x = static_cast<int>(m_imgRec.x - ((newImgWidth - m_imgRec.width) / 2.0));
                 m_imgCurrPos.y = static_cast<int>(m_imgRec.y - ((newImgHeight - m_imgRec.height) / 2.0));;
                 m_imgRec.x = m_imgCurrPos.x;
@@ -402,7 +384,7 @@ public:
     }
 
     void setImageToDefaultCenterNScale() {
-        m_imgScale = 1.0;
+        m_currImgScale = m_imgFittedScale;
         m_imgRec.x = m_imgCenterPos.x;
         m_imgRec.y = m_imgCenterPos.y;
         m_imgRec.width = m_currImage.width;
@@ -471,22 +453,54 @@ public:
     }
 
     void drawImage() {
-        if (isGif) {
-            if (m_isMaximized) {DrawTextureEx(m_currImageTexture, m_imgCurrPos, 0, m_imgScale, WHITE); }
-            else { DrawTextureEx(m_currImageTexture, m_imgMinimizePos, 0, m_imgScale, WHITE); }
-        }
-        else {
-            if (m_isMaximized) {DrawTextureEx(m_currImageTexture, m_imgCurrPos, 0, m_imgScale, WHITE); }
-            else { DrawTextureEx(m_currImageTexture, m_imgMinimizePos, 0, m_imgScale, WHITE); }
-        }
+        if (m_isMaximized) {DrawTextureEx(m_currImageTexture, m_imgCurrPos, 0, m_currImgScale, WHITE); }
+        else { DrawTextureEx(m_currImageTexture, m_imgMinimizePos, 0, m_currImgScale, WHITE); }
         // DrawRectangleRec(m_imgRec, RED);
         // DrawRectangleRec(m_titleBarRec, YELLOW);
     }
 
     void drawStats() {
-        if (m_imgScale == 1.0) { DrawTextEx(m_font, imgStatOGScale, Vector2{5, 5}, m_fontSize, 0, WHITE); }
-        else { DrawTextEx(m_font, TextFormat("%.2f", m_imgScale), Vector2{5, 5}, m_fontSize, 0, WHITE); }
-        if (!isHidden) { DrawTextEx(m_font, shortCutsBlurb, Vector2{5, 35}, m_fontSize, 0, WHITE); }
+        if (m_currImgScale == 1.0) { DrawTextEx(m_font, imgStatOGScale, Vector2{5, 5}, m_fontSize, 0, WHITE); }
+        else { DrawTextEx(m_font, TextFormat("%.2f", m_currImgScale), Vector2{5, 5}, m_fontSize, 0, WHITE); }
+        DrawTextEx(m_font, shortCutsBlurb1, Vector2{5, 35}, m_fontSize, 0, WHITE);
+        if (!isHidden) { DrawTextEx(m_font, shortCutsBlurb2, Vector2{5, 50}, m_fontSize, 0, WHITE); }
+    }
+    
+    void drawTitleBarBtns() {
+        ClearBackground(m_windowColor);
+        
+        for (int i {}; i < MAX_NUM_ICONS; ++i) {
+            if (!m_isMaximized && i == RESTORE) {
+                continue;
+            }
+            if (m_isMaximized && i == MAXIMIZE) {
+                continue;
+            }
+            
+            if (i != CLOSE) {
+                (m_btnIsHovered[i]) ? DrawRectangleRec(m_btnRec[i], m_hoverColor) : DrawRectangleRec(m_btnRec[i], BLANK);  
+            }
+            else {
+                (m_btnIsHovered[CLOSE]) ? DrawRectangleRec(m_btnRec[CLOSE], RED) : DrawRectangleRec(m_btnRec[CLOSE], BLANK);  
+            }
+
+            if (i == RESTORE) {
+                DrawTextureEx(m_icons[RESTORE], (Vector2){m_btnRec[RESTORE].x + 15, m_btnRec[RESTORE].y + 6}, 0, 0.5f, WHITE);
+            }
+            else {
+                DrawTextureEx(m_icons[i], (Vector2){m_btnRec[i].x + 13, m_btnRec[i].y + 2}, 0, 1.0f, WHITE);
+            }
+        }
+        DrawLine(0, m_titleBarHeight, m_titleBarLineWidth, m_titleBarHeight, WHITE);
+        DrawLine(0, m_infoBarRec.y, m_infoBarRec.width, m_infoBarRec.y, WHITE);
+        if (showFilePath) {
+            DrawTextEx(m_font, m_filePath.c_str(), (Vector2){m_currTitBarTextStartPosX, 5.0f}, m_fontSize, 0, RAYWHITE);
+            DrawLine(m_currTitBarTextStartPosX, m_titleBarHeight, m_currTitBarTextStartPosX + m_filePathLengthPixels, m_titleBarHeight, RED);
+        }
+        else {
+            DrawTextEx(m_font, m_fileName, (Vector2){m_currTitBarTextStartPosX, 5.0f}, m_fontSize, 0, RAYWHITE);
+            DrawLine(m_currTitBarTextStartPosX, m_titleBarHeight, m_currTitBarTextStartPosX + m_fileNameLengthPixels, m_titleBarHeight, RED);
+        }
     }
 
     int getWinIsClosedFlag() { return m_winIsClosed; }
@@ -498,16 +512,43 @@ int main(int argc, char* argv[]) {
         std::cout << "Input an image file you stupid fuck\n";
         return 1;
     }
-    int frames = 60;
     const char* fileName { argv[1] };
-    if (IsFileExtension(fileName, ".gif")) { isGif = true; }
-    const Image currImage { (isGif) ? LoadImage(fileName) : LoadImageAnim(fileName, &frames) };
+    const Image currImage { LoadImage(fileName) };
+
+    // Need to bound the window dimensions or else funky things can happen...
+    double imgFittedScale { 1.0 };    
+    const std::array<int, 2> monDims { FetchMonDimensions() };
+    // The upper bound for how big the image can get
+    const int winWiggleRoomX { monDims.at(0) };
+    const int winWiggleRoomY { monDims.at(1) - 40 - 30 - 30 };  // windows taskbar - titlebar - infobar
+    const int maxWinWidth { monDims.at(0) };
+    const int maxWinHeight { monDims.at(1) - 40 };
+    int initWinWidth { currImage.width };
+    int initWinHeight { currImage.height + 30 + 30 };  // titlebar + infobar
+    if (currImage.height > winWiggleRoomY && currImage.width > winWiggleRoomX) {
+        initWinWidth = maxWinWidth;
+        initWinHeight = maxWinHeight;
+        const double scaleX = static_cast<double>(winWiggleRoomX) / static_cast<double>(currImage.width);
+        const double scaleY = static_cast<double>(winWiggleRoomY) / static_cast<double>(currImage.height);
+        imgFittedScale = (scaleX < scaleY) ? scaleX : scaleY;
+        imgHWBiggerThanWinWH = true;
+    } 
+    else if (currImage.height > winWiggleRoomY) {
+        initWinHeight = maxWinHeight;
+        imgFittedScale = static_cast<double>(winWiggleRoomY) / static_cast<double>(currImage.height);
+        imgHeightBiggerThanWinHeight = true;
+    }
+    else if (currImage.width > winWiggleRoomX) {
+        initWinWidth = maxWinWidth;
+        imgFittedScale = static_cast<double>(winWiggleRoomX) / static_cast<double>(currImage.width);
+        imgWidthBiggerThanWinWidth = true;
+    }
 
     SetConfigFlags(FLAG_WINDOW_UNDECORATED | FLAG_WINDOW_RESIZABLE);
-    InitWindow(currImage.width, currImage.height, "Enjoy Your Images Bitch!");
+    InitWindow(initWinWidth, initWinHeight, "Enjoy Your Images Bitch!");
     SetTargetFPS(60);
     
-    Window win { currImage, fileName };
+    Window win { monDims.at(0), monDims.at(1), initWinWidth, initWinHeight, currImage, fileName, imgFittedScale};
     std::array<int, 2> cursorPosVec {};
 
     int cursorX {}, cursorY {};
@@ -525,14 +566,13 @@ int main(int argc, char* argv[]) {
         win.checkClickOrHoverOnTitleBar(mousePos);
         win.draggingLogic(mousePos, cursorPosVec, cursorX, cursorY, winAbsPos, dragOffset, dragNewPos);
         win.zoomingInNOutLogic(currScroll, prevScroll);
-        
         // shortcuts
         win.shortcuts(key);
         
         BeginDrawing();
-            win.drawTitleBarBtns();
             win.drawImage();
-            win.drawStats();
+            win.drawTitleBarBtns();
+            win.drawStats(); 
         EndDrawing();
     }
     UnloadImage(currImage);
