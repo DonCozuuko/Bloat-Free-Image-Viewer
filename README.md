@@ -1,7 +1,7 @@
 # Bloat-Free-Image-Viewer ~bfiv 
 A CLI tool that loads an image file into a bloat-free gui viewer.
 
-I absolute hate windows' proprietary image viewer. It's filled to the brim with bloat; features that literally nobody uses, and as a result the app runs slower than fucking molasses going uphill. And so begun a tale as old as time, the fabled David and Goliath; little man versus the big man; the junior developer piercing into the souls of the Microsoft devs and (Microsoft middle management delegating them) that made this hideous piece of software, and challenging them by making my own blazingly fast, bloat-free, OPEN SOURCE image viewer; thus metaphorically, throwing down the gauntlet. 
+I absolute hate windows' proprietary image viewer. It's filled to the brim with bloat; features that literally nobody uses, and as a result the app runs slower than fucking molasses going uphill. And so begun a tale as old as time, the fabled David and Goliath; little man versus the big man; the cracked junior developer piercing into the souls of the soy Microsoft devs that made this hideous piece of software, and challenging them to a duel, a clash of ideals, so to speak, by making my own blazingly fast, bloat-free, OPEN SOURCE image viewer. 
 
 I used c++ along with the raylib graphics library (openGL wrapper) to anyone curious. A note I feel is important: this image viewer is tailored to my preferences, so if you think it needs some other feature, feel free to make an issue if you care enough. 
 
