@@ -14,7 +14,7 @@ I used c++ along with the raylib graphics library (openGL wrapper) to anyone cur
 	- File name + Full File Path
 
 ## Demo
-![[assets/markichins.png]]
+![markichins](assets/markichins.png)
 
 
 ## Build from Source
