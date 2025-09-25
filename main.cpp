@@ -5,21 +5,18 @@
 #include "raylib.h"
 #include "windowsh-utils.hpp"
 
-
 enum Png { CLOSE, MAXIMIZE, MINIMIZE, RESTORE };
 
 constexpr int MAX_NUM_ICONS { 4 };
-constexpr char* imgStatOGScale { "1.0 Original Scale!" };
-constexpr char* shortCutsBlurb1 { "i = show/hide shortcuts" };
-constexpr char* shortCutsBlurb2 { "r = restore image default\nf = maximize\nd = restore down\nh,j,k,l vim nav\ns = filename/filepath" };
+constexpr const char* imgStatOGScale { "1.0 Original Scale!" };
+constexpr const char* shortCutsBlurb1 { "i = show/hide shortcuts" };
+constexpr const char* shortCutsBlurb2 { "r = restore image default\nf = maximize\nd = restore down\nh,j,k,l vim nav\ns = filename/filepath" };
 bool isHidden { true };
 bool showFilePath { false };
 bool imgWidthBiggerThanWinWidth { false };
 bool imgHeightBiggerThanWinHeight { false };
 bool imgHWBiggerThanWinWH { false };
 
-
-// TODO: fileName not working for some reason, I think it has to do something with slicedStr return being destroyed on stack.
 namespace StaticStrings {
     std::string fileName;
     std::string exePath;
@@ -57,6 +54,7 @@ void ConvertToForwardSlashes(std::string& path) {
     }
 }
 
+
 class Window {
 private:
     // important window measurements
@@ -64,25 +62,27 @@ private:
     int m_winHeight;
     int m_monWidth;
     int m_monHeight;
-    static constexpr int m_titleBarHeight { 30 };  // top
-    static constexpr int m_infoBarHeight { 30 };   // bot
-    static constexpr int m_titleBtnWidth { 50 };
+    static constexpr int m_titleBarHeight       { 30 };  // top
+    static constexpr int m_infoBarHeight        { 30 };   // bot
+    static constexpr int m_windowsTaskBarHeight { 40 };
+    static constexpr int m_titleBtnWidth        { 50 };
     // important image measurements
     Image m_currImage;
     Texture2D m_currImageTexture;
-    Rectangle m_imgRec;
-    Vector2 m_imgCurrPos;
+    Rectangle m_imgRec;    // struct to hold all dimensional info about image
+    // Vector2 m_imgCurrPos;  // used in redrawing the image for dragging
     Vector2 m_imgCenterPos;
     Vector2 m_imgMinimizePos { 0.0f, m_titleBarHeight };
-    // Vector2 m_imgMaximizePos { 0.0f, m_titleBarHeight };
     double m_currImgScale { 1.0 };
     double m_imgFittedScale;
     // title bar
     const Color m_windowColor { 36, 40, 59, 255 };
     const Color m_hoverColor { 62, 64, 80, 255 };
     const char* m_fileName;
-    std::string m_exePath;  // relative (absolute) path for where the exe is located for loading assets 
+    std::string m_exePath;   // relative (absolute) path for where the exe is located for loading assets 
     std::string m_filePath;  // absolute path for the file to display
+    int m_fileSize;  // in bytes
+    std::string m_formattedFileSize;
     Font m_font;  // LoadFontEx() must be called after InitWindow()
     static constexpr int m_fontSize { 16 };
     int m_closeBtnStartPosX;
@@ -116,12 +116,6 @@ public:
         :  m_monWidth { monWidth }, m_monHeight { monHeight }, m_winWidth { initWinWidth }, m_winHeight { initWinHeight }, m_currImage { currImage }, m_imgFittedScale { imgFittedScale }
     {
         m_currImageTexture  = LoadTextureFromImage(m_currImage);
-        m_imgCurrPos.x = 0;
-        m_imgCurrPos.y = m_titleBarHeight;
-        m_imgRec.x = m_imgCurrPos.x;
-        m_imgRec.y = m_imgCurrPos.y;
-        m_imgRec.width = m_currImage.width;
-        m_imgRec.height = m_currImage.height;
         if (m_imgFittedScale != 1.0) {
             m_currImgScale = m_imgFittedScale;
             if (imgHWBiggerThanWinWH) {
@@ -135,11 +129,19 @@ public:
                 m_imgMinimizePos.y = static_cast<int>((m_winHeight - (m_currImgScale * m_currImage.height)) / 2.0);
             }
             m_imgCenterPos.x = static_cast<int>((m_monWidth - (m_currImgScale * m_currImage.width)) / 2.0);
-            m_imgCenterPos.y = static_cast<int>(((m_monHeight - 40.0) - (m_currImgScale * m_currImage.height)) / 2.0);
+            m_imgCenterPos.y = static_cast<int>(((m_monHeight - m_windowsTaskBarHeight) - (m_currImgScale * m_currImage.height)) / 2.0);
+            m_imgRec.x = m_imgMinimizePos.x;
+            m_imgRec.y = m_imgMinimizePos.y;
+            m_imgRec.width = m_currImage.width * m_currImgScale;
+            m_imgRec.height = m_currImage.height * m_currImgScale;
         }
         else {
             m_imgCenterPos.x = static_cast<int>((m_monWidth - m_currImage.width) / 2.0);
-            m_imgCenterPos.y = static_cast<int>(((m_monHeight - 40.0) - m_currImage.height - 10.0) / 2.0);
+            m_imgCenterPos.y = static_cast<int>(((m_monHeight - m_windowsTaskBarHeight) - m_currImage.height - 10.0) / 2.0);
+            m_imgRec.x = 0;
+            m_imgRec.y = m_titleBarHeight;
+            m_imgRec.width = m_currImage.width;
+            m_imgRec.height = m_currImage.height;
         }
 
         // parse fileName from ./fileName
@@ -161,7 +163,19 @@ public:
         const std::string minAssetPath   { m_exePath + "assets/minimize.png" };
         const std::string restAssetPath  { m_exePath + "assets/restore.png" };
         const std::string fontAssetPath  { m_exePath + "assets/JetBrainsMono-Bold.ttf" };
-        
+
+        m_fileSize = GetFileLength(m_filePath.c_str());
+        if (m_fileSize >= 1000000 && m_fileSize < 999999999) {
+            m_formattedFileSize = TextFormat("%d MB", m_fileSize / 1000000);
+        }
+        else if (m_fileSize >= 1000 && m_fileSize < 999999) {
+            m_formattedFileSize = TextFormat("%d KB", m_fileSize / 1000);
+        }
+        else {
+            m_formattedFileSize = TextFormat("%d B", m_fileSize);
+        }
+        m_formattedFileSize = std::string { m_formattedFileSize };
+
         m_font = LoadFontEx(fontAssetPath.c_str(), m_fontSize, 0, 0);
         m_closeBtnStartPosX = m_winWidth - m_titleBtnWidth;
         m_maxBtnStartPosX = m_closeBtnStartPosX - m_titleBtnWidth;
@@ -172,11 +186,9 @@ public:
         m_titleBarRec.width = m_minBtnStartPosX;
         m_titleBarRec.height = m_titleBarHeight;
         m_infoBarRec.x = 0;
-        m_infoBarRec.y = m_winHeight - m_titleBarHeight;
+        m_infoBarRec.y = m_winHeight - m_infoBarHeight;
         m_infoBarRec.width = m_winWidth;
         m_infoBarRec.height = m_titleBarHeight;
-        // m_infoBarRec.x = m_winHeight;
-        // m_infoBarRec shit
         m_icons.at(CLOSE)    = LoadTexture(closeAssetPath.c_str());
         m_icons.at(MAXIMIZE) = LoadTexture(maxAssetPath.c_str());
         m_icons.at(MINIMIZE) = LoadTexture(minAssetPath.c_str());
@@ -187,10 +199,10 @@ public:
         m_btnRec.at(RESTORE)  = Rectangle { static_cast<float>(m_maxBtnStartPosX), 0.0f, static_cast<float>(m_titleBtnWidth), static_cast<float>(m_titleBarHeight) };
         m_fileNameLengthPixels = static_cast<int>(MeasureTextEx(m_font, m_fileName, m_fontSize, 0).x);
         m_filePathLengthPixels = static_cast<int>(MeasureTextEx(m_font, m_filePath.c_str(), m_fontSize, 0).x);
-        m_fileNameStartPosX = static_cast<int>(static_cast<float>(m_winWidth / 2.0) - static_cast<float>(m_fileNameLengthPixels / 2.0));
-        m_fileNameStartPosXMax = static_cast<int>(static_cast<float>(m_monWidth / 2.0) - static_cast<float>(m_fileNameLengthPixels / 2.0));
-        m_filePathStartPosX = static_cast<int>(static_cast<float>(m_winWidth / 2.0) - static_cast<float>(m_filePathLengthPixels / 2.0));
-        m_filePathStartPosXMax = static_cast<int>(static_cast<float>(m_monWidth / 2.0) - static_cast<float>(m_filePathLengthPixels / 2.0));
+        m_fileNameStartPosX = static_cast<int>((m_winWidth - m_fileNameLengthPixels) / 2.0);
+        m_fileNameStartPosXMax = static_cast<int>((m_monWidth - m_fileNameLengthPixels) / 2.0);
+        m_filePathStartPosX = static_cast<int>((m_winWidth - m_filePathLengthPixels) / 2.0);
+        m_filePathStartPosXMax = static_cast<int>((m_monWidth - m_filePathLengthPixels) / 2.0);
         m_currTitBarTextStartPosX = m_fileNameStartPosX;   
     }
 
@@ -227,13 +239,11 @@ public:
             else if (m_imgIsClicked) {
                 if (!m_imgIsDragged) {
                     m_imgIsDragged = true;
-                    dragOffset.x = mousePos.x - m_imgCurrPos.x;
-                    dragOffset.y = mousePos.y - m_imgCurrPos.y;
+                    dragOffset.x = mousePos.x - m_imgRec.x;
+                    dragOffset.y = mousePos.y - m_imgRec.y;
                 }
-                m_imgCurrPos.x = mousePos.x - dragOffset.x;
-                m_imgCurrPos.y = mousePos.y - dragOffset.y;
-                m_imgRec.x = m_imgCurrPos.x;
-                m_imgRec.y = m_imgCurrPos.y;
+                m_imgRec.x = mousePos.x - dragOffset.x;
+                m_imgRec.y = mousePos.y - dragOffset.y;
             }
         }
         if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
@@ -311,15 +321,20 @@ public:
         
         m_titleBarLineWidth = m_monWidth;
         m_infoBarRec.width = m_monWidth;
+        m_infoBarRec.y = m_monHeight - m_windowsTaskBarHeight - m_titleBarHeight;
         m_titleBarRec.x = 0;
         m_titleBarRec.y = 0;
         m_titleBarRec.width = m_btnRec[MINIMIZE].x;
         m_titleBarRec.height = m_titleBarHeight;
 
-        m_imgCurrPos.x = m_imgCenterPos.x;
-        m_imgCurrPos.y = m_imgCenterPos.y;
-        m_imgRec.x = m_imgCurrPos.x;
-        m_imgRec.y = m_imgCurrPos.y;
+        if (m_currImgScale != 1.0) {
+            m_imgRec.x = static_cast<int>((m_monWidth - (m_currImgScale * m_currImage.width)) / 2.0);
+            m_imgRec.y = static_cast<int>(((m_monHeight - m_windowsTaskBarHeight) - (m_currImgScale * m_currImage.height)) / 2.0);
+        }
+        else {
+            m_imgRec.x = m_imgCenterPos.x;
+            m_imgRec.y = m_imgCenterPos.y;
+        }
     }
 
     void restoreWindowBitch() {
@@ -335,37 +350,41 @@ public:
 
         m_titleBarLineWidth = m_winWidth;
         m_infoBarRec.width = m_winWidth;
+        m_infoBarRec.y = m_winHeight - m_infoBarHeight;
         m_titleBarRec.x = 0;
         m_titleBarRec.y = 0;
         m_titleBarRec.width = m_minBtnStartPosX;
         m_titleBarRec.height = m_titleBarHeight;
 
-        m_imgCurrPos.x = 0;
-        m_imgCurrPos.y = m_titleBarHeight;
-        m_imgRec.x = m_imgCurrPos.x;
-        m_imgRec.y = m_imgCurrPos.y;
+        if (m_currImgScale != 1.0) {
+            m_imgRec.x = static_cast<int>((m_winWidth - (m_currImgScale * m_currImage.width)) / 2.0);
+            m_imgRec.y = static_cast<int>((m_winHeight - (m_currImgScale * m_currImage.height)) / 2.0);
+        }
+        else {
+            m_imgRec.x = m_imgMinimizePos.x;
+            m_imgRec.y = m_imgMinimizePos.y;
+        }
     }
 
     void zoomingInNOutLogic(int& currScroll, int& prevScroll) {
         if (IsKeyDown(KEY_LEFT_CONTROL)) {
             if (IsKeyPressed(KEY_EQUAL)) {
-                m_currImgScale += 0.05;
+                m_currImgScale += 0.1;
             }
             if (IsKeyPressed(KEY_MINUS)) {
-                m_currImgScale -= 0.05;
+                m_currImgScale -= 0.1;
             }
+            // this is activated when left control is pressed down
             const int newImgWidth { static_cast<int>(m_currImage.width * m_currImgScale) };
             const int newImgHeight { static_cast<int>(m_currImage.height * m_currImgScale) };
-            m_imgCurrPos.x = static_cast<int>(m_imgRec.x - ((newImgWidth - m_imgRec.width) / 2.0));
-            m_imgCurrPos.y = static_cast<int>(m_imgRec.y - ((newImgHeight - m_imgRec.height) / 2.0));;
-            m_imgRec.x = m_imgCurrPos.x;
-            m_imgRec.y = m_imgCurrPos.y;
+            m_imgRec.x = static_cast<int>(m_imgRec.x - ((newImgWidth - m_imgRec.width) / 2.0));
+            m_imgRec.y = static_cast<int>(m_imgRec.y - ((newImgHeight - m_imgRec.height) / 2.0));
             m_imgRec.width = newImgWidth;
             m_imgRec.height = newImgHeight;
         }
         currScroll = static_cast<int>(GetMouseWheelMove());
         if (currScroll != 0) {
-            m_currImgScale += static_cast<double>(0.05 * currScroll);
+            m_currImgScale += static_cast<double>(0.01 * currScroll);
             if (m_currImgScale == 1.0) {
                 m_imgRec.width = m_currImage.width;
                 m_imgRec.height = m_currImage.height;
@@ -373,10 +392,8 @@ public:
             else {
                 const int newImgWidth { static_cast<int>(m_currImage.width * m_currImgScale) };
                 const int newImgHeight { static_cast<int>(m_currImage.height * m_currImgScale) };
-                m_imgCurrPos.x = static_cast<int>(m_imgRec.x - ((newImgWidth - m_imgRec.width) / 2.0));
-                m_imgCurrPos.y = static_cast<int>(m_imgRec.y - ((newImgHeight - m_imgRec.height) / 2.0));;
-                m_imgRec.x = m_imgCurrPos.x;
-                m_imgRec.y = m_imgCurrPos.y;
+                m_imgRec.x = static_cast<int>(m_imgRec.x - ((newImgWidth - m_imgRec.width) / 2.0));
+                m_imgRec.y = static_cast<int>(m_imgRec.y - ((newImgHeight - m_imgRec.height) / 2.0));;
                 m_imgRec.width = newImgWidth;
                 m_imgRec.height = newImgHeight;
             }
@@ -384,13 +401,19 @@ public:
     }
 
     void setImageToDefaultCenterNScale() {
-        m_currImgScale = m_imgFittedScale;
-        m_imgRec.x = m_imgCenterPos.x;
-        m_imgRec.y = m_imgCenterPos.y;
-        m_imgRec.width = m_currImage.width;
-        m_imgRec.height = m_currImage.height;
-        m_imgCurrPos.x = m_imgRec.x;
-        m_imgCurrPos.y = m_imgRec.y;        
+        // wtf is m_imgFittedScale
+        if (m_isMaximized) {
+            m_currImgScale = m_imgFittedScale;
+            m_imgRec.x = m_imgCenterPos.x;
+            m_imgRec.y = m_imgCenterPos.y;
+        }
+        else {
+            m_currImgScale = m_imgFittedScale;
+            m_imgRec.x = m_imgMinimizePos.x;
+            m_imgRec.y = m_imgMinimizePos.y;
+        }
+        m_imgRec.width = m_currImage.width * m_currImgScale;
+        m_imgRec.height = m_currImage.height * m_currImgScale;
     }
 
     void shortcuts(int& key) {
@@ -411,23 +434,19 @@ public:
                     setImageToDefaultCenterNScale();
                     break;
                 case KEY_J:
-                    m_imgCurrPos.y += 20;
-                    m_imgRec.y = m_imgCurrPos.y;
+                    m_imgRec.y += 20;
                     // go down
                     break;
                 case KEY_K:
-                    m_imgCurrPos.y -= 20;
-                    m_imgRec.y = m_imgCurrPos.y;
+                    m_imgRec.y -= 20;
                     // go up
                     break;
                 case KEY_H:
-                    m_imgCurrPos.x -= 20;
-                    m_imgRec.x = m_imgCurrPos.x;
+                    m_imgRec.x -= 20;
                     // go left
                     break;
                 case KEY_L:
-                    m_imgCurrPos.x += 20;
-                    m_imgRec.x = m_imgCurrPos.x;
+                    m_imgRec.x += 20;
                     // go right
                     break;
                 case KEY_I:
@@ -453,9 +472,9 @@ public:
     }
 
     void drawImage() {
-        if (m_isMaximized) {DrawTextureEx(m_currImageTexture, m_imgCurrPos, 0, m_currImgScale, WHITE); }
-        else { DrawTextureEx(m_currImageTexture, m_imgMinimizePos, 0, m_currImgScale, WHITE); }
-        // DrawRectangleRec(m_imgRec, RED);
+        DrawTextureEx(m_currImageTexture, Vector2{m_imgRec.x, m_imgRec.y}, 0, m_currImgScale, WHITE);
+        // for debugging
+        // DrawRectangleRec(m_imgRec, Color{255, 0, 0, 150});
         // DrawRectangleRec(m_titleBarRec, YELLOW);
     }
 
@@ -464,6 +483,15 @@ public:
         else { DrawTextEx(m_font, TextFormat("%.2f", m_currImgScale), Vector2{5, 5}, m_fontSize, 0, WHITE); }
         DrawTextEx(m_font, shortCutsBlurb1, Vector2{5, 35}, m_fontSize, 0, WHITE);
         if (!isHidden) { DrawTextEx(m_font, shortCutsBlurb2, Vector2{5, 50}, m_fontSize, 0, WHITE); }
+
+        if (m_isMaximized) {
+            DrawTextEx(m_font, TextFormat("%d x %d", m_currImage.width, m_currImage.height), Vector2{5, static_cast<float>(m_monHeight - 22 - m_windowsTaskBarHeight)}, m_fontSize, 0, WHITE);
+            DrawTextEx(m_font, m_formattedFileSize.c_str(), Vector2{100, static_cast<float>(m_monHeight - 22 - m_windowsTaskBarHeight)}, m_fontSize, 0, WHITE);
+        }
+        else {
+            DrawTextEx(m_font, TextFormat("%d x %d", m_currImage.width, m_currImage.height), Vector2{5, static_cast<float>(m_winHeight - 22)}, m_fontSize, 0, WHITE);
+            DrawTextEx(m_font, m_formattedFileSize.c_str(), Vector2{100, static_cast<float>(m_winHeight - 22)}, m_fontSize, 0, WHITE);
+        }
     }
     
     void drawTitleBarBtns() {
@@ -495,11 +523,11 @@ public:
         DrawLine(0, m_infoBarRec.y, m_infoBarRec.width, m_infoBarRec.y, WHITE);
         if (showFilePath) {
             DrawTextEx(m_font, m_filePath.c_str(), (Vector2){m_currTitBarTextStartPosX, 5.0f}, m_fontSize, 0, RAYWHITE);
-            DrawLine(m_currTitBarTextStartPosX, m_titleBarHeight, m_currTitBarTextStartPosX + m_filePathLengthPixels, m_titleBarHeight, RED);
+            DrawLine(m_currTitBarTextStartPosX, m_titleBarHeight, m_currTitBarTextStartPosX + m_filePathLengthPixels, m_titleBarHeight, GREEN);
         }
         else {
             DrawTextEx(m_font, m_fileName, (Vector2){m_currTitBarTextStartPosX, 5.0f}, m_fontSize, 0, RAYWHITE);
-            DrawLine(m_currTitBarTextStartPosX, m_titleBarHeight, m_currTitBarTextStartPosX + m_fileNameLengthPixels, m_titleBarHeight, RED);
+            DrawLine(m_currTitBarTextStartPosX, m_titleBarHeight, m_currTitBarTextStartPosX + m_fileNameLengthPixels, m_titleBarHeight, GREEN);
         }
     }
 
@@ -513,6 +541,10 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     const char* fileName { argv[1] };
+    const bool doesFileExist { FileExists(fileName) };
+    if (!doesFileExist) {
+        return 1;
+    }
     const Image currImage { LoadImage(fileName) };
 
     // Need to bound the window dimensions or else funky things can happen...
@@ -562,11 +594,11 @@ int main(int argc, char* argv[]) {
 
     while (!WindowShouldClose() && !win.getWinIsClosedFlag()) {
         const Vector2 mousePos = GetMousePosition();
-        // window functions
+
         win.checkClickOrHoverOnTitleBar(mousePos);
         win.draggingLogic(mousePos, cursorPosVec, cursorX, cursorY, winAbsPos, dragOffset, dragNewPos);
         win.zoomingInNOutLogic(currScroll, prevScroll);
-        // shortcuts
+
         win.shortcuts(key);
         
         BeginDrawing();
