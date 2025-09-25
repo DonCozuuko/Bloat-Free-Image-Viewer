@@ -2,8 +2,11 @@
 #include <vector>
 #include <array>
 #include <string>
+#include <cstdlib>
 #include "raylib.h"
 #include "windowsh-utils.hpp"
+
+#include <filesystem>
 
 enum Png { CLOSE, MAXIMIZE, MINIMIZE, RESTORE };
 
@@ -112,7 +115,7 @@ private:
     bool m_imgIsDragged { false };
     
 public:
-    Window(const int monWidth, const int monHeight, const int initWinWidth, const int initWinHeight, const Image& currImage, const char* fileName, const double& imgFittedScale)
+    Window(const int monWidth, const int monHeight, const int initWinWidth, const int initWinHeight, const Image& currImage, const char* fileName, const char* path, const double& imgFittedScale)
         :  m_monWidth { monWidth }, m_monHeight { monHeight }, m_winWidth { initWinWidth }, m_winHeight { initWinHeight }, m_currImage { currImage }, m_imgFittedScale { imgFittedScale }
     {
         m_currImageTexture  = LoadTextureFromImage(m_currImage);
@@ -148,15 +151,16 @@ public:
         parseFile(std::string(fileName), true);
         m_fileName = StaticStrings::fileName.c_str();
         // parse exePath from exePath/image-loader.exe
-        std::string exePath { GetFullPath("", false) };
+        std::string exePath { GetFullExePath() };
         ConvertToForwardSlashes(exePath);
         parseFile(exePath, false);
         m_exePath = StaticStrings::exePath;
         // get file absolute path
-        std::string strFileName { m_fileName };
-        std::string filePath { GetFullPath(strFileName, true) };
-        ConvertToForwardSlashes(filePath);
-        m_filePath = filePath;
+        char buffer[_MAX_PATH];
+        _fullpath(buffer, path,_MAX_PATH);
+        std::string fullFileNamePathBuffer { buffer }; 
+        ConvertToForwardSlashes(fullFileNamePathBuffer);
+        m_filePath = fullFileNamePathBuffer;
 
         const std::string closeAssetPath { m_exePath + "assets/close.png" };
         const std::string maxAssetPath   { m_exePath + "assets/maximize.png" };
@@ -523,11 +527,11 @@ public:
         DrawLine(0, m_infoBarRec.y, m_infoBarRec.width, m_infoBarRec.y, WHITE);
         if (showFilePath) {
             DrawTextEx(m_font, m_filePath.c_str(), (Vector2){m_currTitBarTextStartPosX, 5.0f}, m_fontSize, 0, RAYWHITE);
-            DrawLine(m_currTitBarTextStartPosX, m_titleBarHeight, m_currTitBarTextStartPosX + m_filePathLengthPixels, m_titleBarHeight, GREEN);
+            DrawLine(m_currTitBarTextStartPosX, m_titleBarHeight, m_currTitBarTextStartPosX + m_filePathLengthPixels, m_titleBarHeight, RED);
         }
         else {
             DrawTextEx(m_font, m_fileName, (Vector2){m_currTitBarTextStartPosX, 5.0f}, m_fontSize, 0, RAYWHITE);
-            DrawLine(m_currTitBarTextStartPosX, m_titleBarHeight, m_currTitBarTextStartPosX + m_fileNameLengthPixels, m_titleBarHeight, GREEN);
+            DrawLine(m_currTitBarTextStartPosX, m_titleBarHeight, m_currTitBarTextStartPosX + m_fileNameLengthPixels, m_titleBarHeight, RED);
         }
     }
 
@@ -543,8 +547,12 @@ int main(int argc, char* argv[]) {
     const char* fileName { argv[1] };
     const bool doesFileExist { FileExists(fileName) };
     if (!doesFileExist) {
+        std::cout << "That file doesn't exist yo!\n";
         return 1;
     }
+    // Case 1 (WORKS): ./bfiv "/c/Full-Path"
+    // Case 2 (): ./bfiv ./relative-path-from-curr-working-dir-forwards
+    // Case 3 (): ./bfiv ../relative-path-from-curr-working-dir-backwards
     const Image currImage { LoadImage(fileName) };
 
     // Need to bound the window dimensions or else funky things can happen...
@@ -580,7 +588,7 @@ int main(int argc, char* argv[]) {
     InitWindow(initWinWidth, initWinHeight, "Enjoy Your Images Bitch!");
     SetTargetFPS(60);
     
-    Window win { monDims.at(0), monDims.at(1), initWinWidth, initWinHeight, currImage, fileName, imgFittedScale};
+    Window win { monDims.at(0), monDims.at(1), initWinWidth, initWinHeight, currImage, fileName, argv[1], imgFittedScale};
     std::array<int, 2> cursorPosVec {};
 
     int cursorX {}, cursorY {};

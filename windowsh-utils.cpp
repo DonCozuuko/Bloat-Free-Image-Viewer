@@ -23,10 +23,14 @@ void setGrabCloseCursor() {
     SetCursor(grabCloseCursor);
 }
 
-std::string GetFullPath(const std::string& fileName, bool getFilePath) {
+std::string GetFullExePath() {
     char buffer[MAX_PATH];
-    if (getFilePath) { GetFullPathNameA(fileName.c_str(), MAX_PATH, buffer, nullptr); }
-    else { GetModuleFileNameA(NULL, buffer, MAX_PATH); }
-    // !getFilePath == getExePath
+    GetModuleFileNameA(NULL, buffer, MAX_PATH);
     return buffer;
+}
+
+std::string GetCWD() {
+    char buffer[MAX_PATH];
+    GetCurrentDirectoryA(MAX_PATH, buffer);
+    return std::string { buffer }; 
 }
